@@ -60,7 +60,8 @@ service cloud.firestore {
         && data.title is string && data.title.size() <= 512
         && data.severity is string && data.severity.size() <= 32
         && data.publishedAt is string && data.publishedAt.size() <= 64
-        && data.executiveSummary is string && data.executiveSummary.size() <= 8192;
+        && data.executiveSummary is string && data.executiveSummary.size() <= 8192
+        && (!('tlp' in data) || (data.tlp is string && data.tlp.size() <= 32));
     }
 
     function isValidHuntRequest(data) {

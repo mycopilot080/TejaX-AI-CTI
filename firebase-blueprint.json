@@ -106,6 +106,7 @@
         "technicalSummary": { "type": "string", "maxLength": 8192 },
         "assignedAnalyst": { "type": "string", "maxLength": 128 },
         "reportType": { "type": "string", "maxLength": 64 },
+        "tlp": { "type": "string", "maxLength": 32 },
         "iocs": { "type": "object" },
         "recommendations": { "type": "array" },
         "references": { "type": "array" }

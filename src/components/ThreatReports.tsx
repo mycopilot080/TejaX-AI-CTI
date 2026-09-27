@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DailyThreatReportTemplate } from './DailyThreatReportTemplate';
 import { subscribeThreatReports, saveThreatReportToFirestore, deleteThreatReportFromFirestore } from '../lib/firebase';
+import { TLPLevel, getTlpConfig } from '../types/tlp';
+import { TLPSelector, TLPBadge } from './TLPSelector';
 import {
   FileText,
   Copy,
@@ -33,7 +35,8 @@ import {
   Target,
   BarChart3,
   Trash2,
-  Database
+  Database,
+  Edit3
 } from 'lucide-react';
 import {
   downloadReportAsHtml,
@@ -62,6 +65,7 @@ export interface ThreatReportData {
   executiveSummary: string;
   technicalSummary: string;
   assignedAnalyst?: string;
+  tlp?: TLPLevel;
   iocs: {
     ips: string[];
     domains: string[];
@@ -84,6 +88,7 @@ export const INITIAL_THREAT_REPORTS: ThreatReportData[] = [
     publishedAt: new Date(Date.now() - 1000 * 3600 * 4).toISOString(),
     mitreTtp: 'T1003.001 - OS Credential Dumping: LSASS Memory',
     killChainStage: 'Credential Access / Exploitation',
+    tlp: 'TLP:RED',
     executiveSummary:
       'Over the last 24 hours, Tejax Cyber Intelligence detected active zero-day exploitation targeting Windows Local Security Authority Subsystem Service (LSASS) across financial and defense sector endpoints. Threat actors are utilizing an unquoted buffer overflow to dump domain administrator credentials directly from kernel memory space.',
     technicalSummary:
@@ -119,6 +124,7 @@ export const INITIAL_THREAT_REPORTS: ThreatReportData[] = [
     publishedAt: new Date(Date.now() - 1000 * 3600 * 8).toISOString(),
     mitreTtp: 'T1490 - Inhibit System Recovery',
     killChainStage: 'Impact / Actions on Objectives',
+    tlp: 'TLP:AMBER+STRICT',
     executiveSummary:
       'Widespread ransomware activity identified in the past 24 hours attempting automated deletion of Volume Shadow Copies (vssadmin.exe) followed by background service termination and .lockbit payload deployment across enterprise storage arrays.',
     technicalSummary:
@@ -152,6 +158,7 @@ export const INITIAL_THREAT_REPORTS: ThreatReportData[] = [
     publishedAt: new Date(Date.now() - 1000 * 3600 * 14).toISOString(),
     mitreTtp: 'T1528 - Capture Access Token: OAuth Grant',
     killChainStage: 'Credential Access / Persistence',
+    tlp: 'TLP:AMBER',
     executiveSummary:
       'Cloud threat actor Scattered Spider has been observed registering rogue multitenant OAuth applications in Entra ID and Okta environments to gain persistent API access without triggering MFA alerts.',
     technicalSummary:
@@ -183,6 +190,7 @@ export interface ThreatDigestData {
   endDate: string;
   executiveSummary: string;
   threatLevel: 'CRITICAL' | 'ELEVATED' | 'MODERATE' | 'GUARDED';
+  tlp: TLPLevel;
   stats: {
     cvesAnalyzed: number;
     criticalZeroDays: number;
@@ -226,6 +234,7 @@ export const INITIAL_DIGESTS: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', ThreatDiges
     startDate: 'Sep 25, 2026 20:00 UTC',
     endDate: 'Sep 26, 2026 20:00 UTC',
     threatLevel: 'CRITICAL',
+    tlp: 'TLP:AMBER',
     executiveSummary:
       'Over the past 24 hours, global telemetry observed an aggressive surge in memory-based credential dumping (LSASS) coupled with active automated Volume Shadow Copy deletions across healthcare and financial services perimeters. Three zero-day vulnerabilities were identified with weaponized proof-of-concept exploits circulating on underground Russian-speaking forums.',
     stats: {
@@ -322,6 +331,7 @@ export const INITIAL_DIGESTS: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', ThreatDiges
     startDate: 'Sep 20, 2026',
     endDate: 'Sep 26, 2026',
     threatLevel: 'ELEVATED',
+    tlp: 'TLP:AMBER+STRICT',
     executiveSummary:
       'During Week 39 of 2026, Tejax Cyber Intelligence tracked a coordinated pivot by state-sponsored and cybercrime syndicates toward sovereign supply chain and cloud identity providers. Twelve critical CVE advisories were analyzed, with 7 added to the CISA Known Exploited Vulnerabilities catalog. Cross-correlation confirmed 846 malicious indicator hits blocked across our enterprise boundaries.',
     stats: {
@@ -427,6 +437,7 @@ export const INITIAL_DIGESTS: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', ThreatDiges
     startDate: 'Aug 28, 2026',
     endDate: 'Sep 26, 2026',
     threatLevel: 'ELEVATED',
+    tlp: 'TLP:GREEN',
     executiveSummary:
       'September 2026 was characterized by unprecedented velocity in zero-day exploitation and extortion campaigns targeting enterprise cloud perimeters. Over 340 vulnerabilities were triaged, of which 41 reached Critical severity. High-profile threat actors exploited legacy perimeter gateways and weaponized generative AI spear phishing lures. Overall enterprise posture resilience improved by +7 points following coordinated perimeter takedowns and EDR sensor rollout.',
     stats: {
@@ -613,7 +624,75 @@ export const ThreatReports: React.FC<ThreatReportsProps> = () => {
   const [onDemandTopic, setOnDemandTopic] = useState<string>('Advanced Ransomware & Zero-Day Exploit Campaign');
   const [onDemandSeverity, setOnDemandSeverity] = useState<'CRITICAL' | 'HIGH' | 'MEDIUM'>('CRITICAL');
   const [onDemandTimeWindow, setOnDemandTimeWindow] = useState<string>('Last 24 Hours');
+  const [onDemandTlp, setOnDemandTlp] = useState<TLPLevel>('TLP:AMBER');
   const [isGeneratingOnDemand, setIsGeneratingOnDemand] = useState<boolean>(false);
+
+  // Edit Report Modal State
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [editReportId, setEditReportId] = useState<string>('');
+  const [editTitle, setEditTitle] = useState<string>('');
+  const [editSeverity, setEditSeverity] = useState<'CRITICAL' | 'HIGH' | 'MEDIUM'>('CRITICAL');
+  const [editTlp, setEditTlp] = useState<TLPLevel>('TLP:AMBER');
+  const [editSummary, setEditSummary] = useState<string>('');
+  const [editThreatActor, setEditThreatActor] = useState<string>('');
+
+  const handleOpenEditModal = (report: ThreatReportData) => {
+    setEditReportId(report.id);
+    setEditTitle(report.title);
+    setEditSeverity(report.severity);
+    setEditTlp(report.tlp || 'TLP:AMBER');
+    setEditSummary(report.executiveSummary || '');
+    setEditThreatActor(report.threatActor || '');
+    setEditModalOpen(true);
+  };
+
+  const handleSaveReportEdit = () => {
+    if (!editReportId) return;
+    const updated = reports.map((r) => {
+      if (r.id === editReportId) {
+        const u: ThreatReportData = {
+          ...r,
+          title: editTitle,
+          severity: editSeverity,
+          tlp: editTlp,
+          executiveSummary: editSummary,
+          threatActor: editThreatActor
+        };
+        saveThreatReportToFirestore(u);
+        return u;
+      }
+      return r;
+    });
+    setReports(updated);
+    const target = updated.find((r) => r.id === editReportId);
+    if (target) {
+      setSelectedReport(target);
+    }
+    setEditModalOpen(false);
+    showDownloadNotice(`Saved edits for ${target?.cveId || editReportId} (TLP: ${editTlp}) & saved to Firestore.`);
+  };
+
+  const handleUpdateDigestTlp = (cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY', newTlp: TLPLevel) => {
+    setDigests((prev) => ({
+      ...prev,
+      [cadence]: {
+        ...prev[cadence],
+        tlp: newTlp
+      }
+    }));
+    showDownloadNotice(`Updated ${cadence} Digest classification to ${newTlp}.`);
+  };
+
+  const handleUpdateReportTlp = (reportId: string, newTlp: TLPLevel) => {
+    const updated = reports.map((r) => (r.id === reportId ? { ...r, tlp: newTlp } : r));
+    setReports(updated);
+    setSelectedReport((prev) => (prev.id === reportId ? { ...prev, tlp: newTlp } : prev));
+    const target = updated.find((r) => r.id === reportId);
+    if (target) {
+      saveThreatReportToFirestore(target);
+    }
+    showDownloadNotice(`Updated ${selectedReport.cveId} classification to ${newTlp} & saved to Firestore.`);
+  };
 
   const showDownloadNotice = (msg: string) => {
     setDownloadFeedback(msg);
@@ -674,6 +753,7 @@ ${selectedReport.iocs.processes.join('\n')}`;
           threatActor: r.threatActor || 'APT28 / Scattered Spider / LockBit',
           timeWindow: 'Last 24 Hours',
           publishedAt: new Date().toISOString(),
+          tlp: 'TLP:AMBER',
           executiveSummary: r.summary || 'Compiled 24-hour security executive threat briefing report.',
           technicalSummary:
             'Comprehensive multi-vector threat synthesis analyzing incoming telemetry streams, LSASS memory handles, ransomware shadow purges, and cloud OAuth consent abuse.',
@@ -744,6 +824,7 @@ ${selectedReport.iocs.processes.join('\n')}`;
           threatActor: r.threatActor || 'Advanced Persistent Threat Group (APT-ONDEMAND)',
           timeWindow: onDemandTimeWindow,
           publishedAt: new Date().toISOString(),
+          tlp: onDemandTlp,
           executiveSummary: r.summary || `On-demand generated threat briefing analyzing telemetry streams for "${onDemandTopic}".`,
           technicalSummary: r.technicalSummary || 'Comprehensive on-demand multi-source threat intelligence synthesis covering initial access, process injection, and telemetry indicators.',
           iocs: {
@@ -780,6 +861,7 @@ ${selectedReport.iocs.processes.join('\n')}`;
         threatActor: 'Custom Threat Actor Group',
         timeWindow: onDemandTimeWindow,
         publishedAt: new Date().toISOString(),
+        tlp: onDemandTlp,
         executiveSummary: `Generated on-demand threat intelligence briefing for "${onDemandTopic}" covering last 24 hours of telemetry monitoring.`,
         technicalSummary: 'Automated on-demand incident analysis and indicator correlation.',
         mitreTtp: 'T1566 - Phishing / Spear-Phishing Attachment',
@@ -880,11 +962,11 @@ ${curDigest.strategicRecommendations.join('\n')}`;
       const payload = isDigest
         ? {
             recipientEmail: targetEmail,
-            incidentTitle: `[${curDigest.cadence} THREAT DIGEST] ${curDigest.title}`,
+            incidentTitle: `[${curDigest.tlp}] [${curDigest.cadence} THREAT DIGEST] ${curDigest.title}`,
             severity: curDigest.threatLevel === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
             riskScore: curDigest.threatLevel === 'CRITICAL' ? 95 : 85,
-            affectedHost: `Global Threat Intelligence Digest (${curDigest.timeWindowLabel})`,
-            executiveSummary: curDigest.executiveSummary,
+            affectedHost: `Global Threat Intelligence Digest (${curDigest.timeWindowLabel}) [${curDigest.tlp}]`,
+            executiveSummary: `[CLASSIFICATION: ${curDigest.tlp} - ${getTlpConfig(curDigest.tlp).recipientScope}]\n\n${curDigest.executiveSummary}`,
             technicalSummary: `Key Trends:\n${curDigest.keyTrends.map((t) => `• ${t}`).join('\n')}\n\nTop Targeted CVEs:\n${curDigest.topTargetedCVEs.map((c) => `${c.cveId}: ${c.title} (${c.exploitStatus})`).join('\n')}`,
             iocs: {
               ips: curDigest.topIocs.ips.map(formatIp),
@@ -895,11 +977,11 @@ ${curDigest.strategicRecommendations.join('\n')}`;
           }
         : {
             recipientEmail: targetEmail,
-            incidentTitle: `[24H THREAT REPORT] ${selectedReport.title}`,
+            incidentTitle: `[${selectedReport.tlp || 'TLP:AMBER'}] [24H THREAT REPORT] ${selectedReport.title}`,
             severity: selectedReport.severity,
             riskScore: Math.round(selectedReport.cvssScore * 10),
-            affectedHost: `Global Threat Intelligence Advisory (${selectedReport.cveId})`,
-            executiveSummary: selectedReport.executiveSummary,
+            affectedHost: `Global Threat Intelligence Advisory (${selectedReport.cveId}) [${selectedReport.tlp || 'TLP:AMBER'}]`,
+            executiveSummary: `[CLASSIFICATION: ${selectedReport.tlp || 'TLP:AMBER'} - ${getTlpConfig(selectedReport.tlp).recipientScope}]\n\n${selectedReport.executiveSummary}`,
             technicalSummary: selectedReport.technicalSummary,
             iocs: selectedReport.iocs
           };
@@ -1263,9 +1345,12 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                     </div>
                     <span className="font-bold text-xs text-white">Daily Threat Digest</span>
                   </div>
-                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                    LAST 24 HOURS
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <TLPBadge level={digests.DAILY.tlp} size="xs" />
+                    <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                      LAST 24 HOURS
+                    </span>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-400 line-clamp-2">
                   Tactical surge telemetry, memory credential injection (LSASS), and active weaponized PoCs.
@@ -1298,9 +1383,12 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                     </div>
                     <span className="font-bold text-xs text-white">Weekly Executive Digest</span>
                   </div>
-                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-950 text-amber-300 border border-amber-800">
-                    WEEK 39 (7 DAYS)
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <TLPBadge level={digests.WEEKLY.tlp} size="xs" />
+                    <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-950 text-amber-300 border border-amber-800">
+                      WEEK 39 (7 DAYS)
+                    </span>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-400 line-clamp-2">
                   State-sponsored actor pivot, cloud OAuth consent abuse, CISA KEV additions & SLA containment.
@@ -1333,9 +1421,12 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                     </div>
                     <span className="font-bold text-xs text-white">Monthly Strategic Digest</span>
                   </div>
-                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-purple-950 text-purple-300 border border-purple-800">
-                    SEP 2026 (30 DAYS)
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <TLPBadge level={digests.MONTHLY.tlp} size="xs" />
+                    <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-purple-950 text-purple-300 border border-purple-800">
+                      SEP 2026 (30 DAYS)
+                    </span>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-400 line-clamp-2">
                   Sovereign attack surface posture, macro ransomware trends, supply chain & Living-off-the-Land.
@@ -1360,6 +1451,12 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                   <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
                     {digests[selectedCadence].cadence} CADENCE
                   </span>
+                  <TLPSelector
+                    value={digests[selectedCadence].tlp}
+                    onChange={(newTlp) => handleUpdateDigestTlp(selectedCadence, newTlp)}
+                    label="Customise TLP"
+                    size="sm"
+                  />
                   <span className="text-xs text-slate-400 font-mono">
                     ID: {digests[selectedCadence].id}
                   </span>
@@ -1376,8 +1473,9 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                     Window: {digests[selectedCadence].timeWindowLabel} ({digests[selectedCadence].startDate} – {digests[selectedCadence].endDate})
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-white tracking-tight">
-                  {digests[selectedCadence].title}
+                <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2.5 flex-wrap">
+                  <span>{digests[selectedCadence].title}</span>
+                  <TLPBadge level={digests[selectedCadence].tlp} size="sm" />
                 </h3>
               </div>
 
@@ -1791,16 +1889,20 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-cyan-300 border border-slate-700">
-                    {rep.cveId}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-cyan-300 border border-slate-700">
+                      {rep.cveId}
+                    </span>
+                    <TLPBadge level={rep.tlp || 'TLP:AMBER'} size="xs" />
+                  </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
                     CVSS {rep.cvssScore}
                   </span>
                 </div>
 
-                <h4 className="text-xs font-bold text-white line-clamp-2 my-1.5 leading-snug">
-                  {rep.title}
+                <h4 className="text-xs font-bold text-white line-clamp-2 my-1.5 leading-snug flex items-center gap-1.5">
+                  <TLPBadge level={rep.tlp || 'TLP:AMBER'} size="xs" />
+                  <span>{rep.title}</span>
                 </h4>
 
                 <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
@@ -1817,10 +1919,24 @@ ${curDigest.strategicRecommendations.join('\n')}`;
           {/* Report Header Banner */}
           <div className="border-b border-slate-800 pb-4 space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
                   {selectedReport.id} • {selectedReport.cveId}
                 </span>
+                <TLPSelector
+                  value={selectedReport.tlp || 'TLP:AMBER'}
+                  onChange={(newTlp) => handleUpdateReportTlp(selectedReport.id, newTlp)}
+                  label="Customise TLP"
+                  size="sm"
+                />
+                <button
+                  onClick={() => handleOpenEditModal(selectedReport)}
+                  className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-semibold flex items-center gap-1.5 transition-all"
+                  title="Edit Threat Report metadata & TLP"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Edit Report</span>
+                </button>
                 <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-slate-800 text-slate-300">
                   Window: {selectedReport.timeWindow}
                 </span>
@@ -1841,8 +1957,9 @@ ${curDigest.strategicRecommendations.join('\n')}`;
               </div>
             </div>
 
-            <h2 className="text-base font-bold text-white leading-snug">
-              {selectedReport.title}
+            <h2 className="text-base font-bold text-white leading-snug flex items-center gap-2.5 flex-wrap">
+              <span>{selectedReport.title}</span>
+              <TLPBadge level={selectedReport.tlp || 'TLP:AMBER'} size="sm" />
             </h2>
 
             <div className="flex flex-wrap items-center gap-3 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs font-mono my-2">
@@ -2223,6 +2340,24 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                   </select>
                 </div>
               </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 block">Traffic Light Protocol (TLP):</label>
+                  <span className="text-[10px] text-cyan-400 font-mono">FIRST TLP 2.0</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <TLPSelector
+                    value={onDemandTlp}
+                    onChange={setOnDemandTlp}
+                    label="Customise TLP"
+                    size="sm"
+                  />
+                  <span className="text-[11px] text-slate-400 font-sans">
+                    {getTlpConfig(onDemandTlp).recipientScope}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
@@ -2248,6 +2383,125 @@ ${curDigest.strategicRecommendations.join('\n')}`;
                     <span>Generate On-Demand Report</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* EDIT THREAT REPORT MODAL */}
+      {editModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-sm font-bold text-white">Edit Threat Report</h3>
+                <TLPBadge level={editTlp} size="xs" />
+              </div>
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="text-slate-400 hover:text-white font-mono text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Update report metadata, customize the Traffic Light Protocol (TLP) information sharing level, and persist updates directly to Firebase Firestore.
+            </p>
+
+            <div className="space-y-3 font-mono text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 block">Report Title:</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Severity Level:</label>
+                  <select
+                    value={editSeverity}
+                    onChange={(e) => setEditSeverity(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Threat Actor:</label>
+                  <input
+                    type="text"
+                    value={editThreatActor}
+                    onChange={(e) => setEditThreatActor(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {/* TLP Selection Dropdown */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 block">Select TLP Level (Dropdown):</label>
+                  <span className="text-[10px] text-cyan-400 font-mono">FIRST TLP 2.0 Standard</span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <TLPSelector
+                      value={editTlp}
+                      onChange={setEditTlp}
+                      label="Select TLP"
+                      size="sm"
+                    />
+                    <select
+                      value={editTlp}
+                      onChange={(e) => setEditTlp(e.target.value as TLPLevel)}
+                      className="bg-slate-900 border border-slate-700 text-xs font-mono text-cyan-300 rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer"
+                    >
+                      <option value="TLP:RED">TLP:RED (Strictly Named Recipients Only)</option>
+                      <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT (Recipient Org Only)</option>
+                      <option value="TLP:AMBER">TLP:AMBER (Recipient Org & Clients)</option>
+                      <option value="TLP:GREEN">TLP:GREEN (Community & Partners)</option>
+                      <option value="TLP:CLEAR">TLP:CLEAR (Open Public World)</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 font-sans mt-1">
+                  {getTlpConfig(editTlp).description}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 block">Executive Summary:</label>
+                <textarea
+                  rows={3}
+                  value={editSummary}
+                  onChange={(e) => setEditSummary(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-sans text-xs focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveReportEdit}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 shadow-md shadow-cyan-500/20"
+              >
+                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <span>Save Report & TLP to Firestore</span>
               </button>
             </div>
           </div>

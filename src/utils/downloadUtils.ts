@@ -1,4 +1,5 @@
 import { ThreatReportData, ThreatDigestData, defangIp, defangDomain } from '../components/ThreatReports';
+import { getTlpConfig } from '../types/tlp';
 
 /**
  * Universal helper to trigger a browser download from raw string content.
@@ -21,21 +22,23 @@ export function downloadFile(content: string, filename: string, contentType: str
 export function downloadReportAsHtml(report: ThreatReportData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(report.tlp);
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${report.cveId} - ${report.title}</title>
+  <title>${report.cveId} - ${report.title} [${tlpConfig.level}]</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b1329; color: #e2e8f0; margin: 0; padding: 30px; line-height: 1.6; }
-    .container { max-width: 800px; margin: 0 auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+    .container { max-width: 820px; margin: 0 auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
     .header { border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 24px; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; font-weight: bold; margin-right: 8px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; font-weight: bold; margin-right: 8px; margin-bottom: 6px; }
     .badge-cve { background: #0c4a6e; color: #38bdf8; border: 1px solid #0284c7; }
     .badge-cvss { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
     .badge-defang { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .tlp-banner { background-color: ${tlpConfig.bannerBgColor}; border: 1px solid ${tlpConfig.bannerBorderColor}; border-left: 6px solid ${tlpConfig.hexColor}; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; }
     .title { font-size: 22px; font-weight: 800; color: #ffffff; margin: 12px 0 8px 0; }
     .meta { font-size: 12px; color: #94a3b8; font-family: monospace; }
     .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; margin-top: 28px; margin-bottom: 12px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; }
@@ -43,7 +46,7 @@ export function downloadReportAsHtml(report: ThreatReportData, isDefanged: boole
     .tech-box { background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; color: #38bdf8; }
     .ioc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
     .ioc-card { background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 11px; }
-    .ioc-label { color: #64748b; font-size: 10px; font-weight: bold; display: block; margin-bottom: 6px; uppercase; }
+    .ioc-label { color: #64748b; font-size: 10px; font-weight: bold; display: block; margin-bottom: 6px; text-transform: uppercase; }
     .ioc-item { color: #f43f5e; word-break: break-all; margin-bottom: 4px; }
     .ioc-item-domain { color: #f59e0b; word-break: break-all; margin-bottom: 4px; }
     .ioc-item-hash { color: #38bdf8; word-break: break-all; margin-bottom: 4px; font-size: 10px; }
@@ -62,8 +65,26 @@ export function downloadReportAsHtml(report: ThreatReportData, isDefanged: boole
 </head>
 <body>
   <div class="container">
+    <!-- FIRST TLP 2.0 CLASSIFICATION BANNER -->
+    <div class="tlp-banner">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span style="color: ${tlpConfig.textColor}; font-weight: bold; font-size: 13px; letter-spacing: 0.5px;">
+          TRAFFIC LIGHT PROTOCOL: ${tlpConfig.level} &bull; ${tlpConfig.recipientScope.toUpperCase()}
+        </span>
+        <span style="font-size: 10px; color: #94a3b8; background: #020617; padding: 2px 8px; border-radius: 4px; border: 1px solid #1e293b;">
+          FIRST TLP 2.0 STANDARD
+        </span>
+      </div>
+      <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">
+        <strong>Sharing Protocol:</strong> ${tlpConfig.sharingBoundary}
+      </div>
+    </div>
+
     <div class="header">
       <div>
+        <span class="badge" style="background: ${tlpConfig.bannerBgColor}; color: ${tlpConfig.textColor}; border: 1px solid ${tlpConfig.bannerBorderColor}; font-weight: bold;">
+          ${tlpConfig.level}
+        </span>
         <span class="badge badge-cve">${report.cveId}</span>
         <span class="badge badge-cvss">CVSS ${report.cvssScore} ${report.severity}</span>
         <span class="badge badge-defang">${isDefanged ? 'DEFANGED (SAFE)' : 'RAW UNGUARDED'}</span>
@@ -106,25 +127,25 @@ export function downloadReportAsHtml(report: ThreatReportData, isDefanged: boole
       ${report.iocs.processes.map((p) => `<div style="color: #cbd5e1; margin-bottom: 4px;">${p}</div>`).join('')}
     </div>
 
-    <div class="section-title">4. Actionable Mitigation Recommendations</div>
+    <div class="section-title">5. Actionable Mitigation Recommendations</div>
     <ul>
       ${report.recommendations.map((rec) => `<li>${rec}</li>`).join('')}
     </ul>
 
-    <div class="section-title">5. Intelligence Citations & References</div>
+    <div class="section-title">6. Intelligence Citations & References</div>
     <div>
       ${report.references.map((r) => `<a href="${r.url}" target="_blank" class="ref-link"><strong>[${r.source}]</strong> ${r.title}</a>`).join('')}
     </div>
 
     <div class="footer">
-      TEJAX AI • CYBER INTELLIGENCE 24H DISCLOSURE REPORT<br>
-      CONFIDENTIAL SECURITY AUDIT DATA • Generated ${new Date().toISOString()}
+      TEJAX AI &bull; CYBER INTELLIGENCE 24H DISCLOSURE REPORT &bull; ${tlpConfig.level}<br>
+      CONFIDENTIAL SECURITY AUDIT DATA &bull; Generated ${new Date().toISOString()}
     </div>
   </div>
 </body>
 </html>`;
 
-  const filename = `${report.cveId}_24h_Threat_Report_${isDefanged ? 'Defanged' : 'Raw'}.html`;
+  const filename = `${report.cveId}_24h_Threat_Report_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.html`;
   downloadFile(htmlContent, filename, 'text/html');
 }
 
@@ -134,13 +155,18 @@ export function downloadReportAsHtml(report: ThreatReportData, isDefanged: boole
 export function downloadReportAsMarkdown(report: ThreatReportData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(report.tlp);
 
   const mdContent = `# ${report.title}
+
+> **CLASSIFICATION: ${tlpConfig.level}** (${tlpConfig.recipientScope})  
+> **Sharing Boundary:** ${tlpConfig.sharingBoundary}
 
 **CVE Identifier:** \`${report.cveId}\`  
 **Severity:** ${report.severity} (CVSS ${report.cvssScore})  
 **Threat Actor:** ${report.threatActor}  
 **Time Window:** ${report.timeWindow}  
+**TLP Marking:** \`${tlpConfig.level}\`  
 **Defang Mode:** ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW UNGUARDED'}  
 **Published:** ${new Date(report.publishedAt).toUTCString()}  
 
@@ -170,17 +196,17 @@ ${report.iocs.hashes.map((h) => `- \`${h}\``).join('\n')}
 ### Process Execution Vectors
 ${report.iocs.processes.map((p) => `- \`${p}\``).join('\n')}
 
-## 4. Prioritized Mitigation Recommendations
+## 5. Prioritized Mitigation Recommendations
 ${report.recommendations.map((rec, i) => `${i + 1}. ${rec}`).join('\n')}
 
-## 5. Citations & References
+## 6. Citations & References
 ${report.references.map((ref) => `- [${ref.source}: ${ref.title}](${ref.url})`).join('\n')}
 
 ---
-*Generated by Tejax AI Cyber Intelligence Engine on ${new Date().toISOString()}*
+*Classification: ${tlpConfig.level} &bull; Generated by Tejax AI Cyber Intelligence Engine on ${new Date().toISOString()}*
 `;
 
-  const filename = `${report.cveId}_24h_Threat_Report_${isDefanged ? 'Defanged' : 'Raw'}.md`;
+  const filename = `${report.cveId}_24h_Threat_Report_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.md`;
   downloadFile(mdContent, filename, 'text/markdown');
 }
 
@@ -200,6 +226,7 @@ export function downloadReportAsPdf(report: ThreatReportData, isDefanged: boolea
 export function downloadReportAsStixJson(report: ThreatReportData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(report.tlp);
 
   const bundleId = `bundle--${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
   const reportId = `report--${crypto.randomUUID ? crypto.randomUUID() : Date.now() + 1}`;
@@ -210,6 +237,7 @@ export function downloadReportAsStixJson(report: ThreatReportData, isDefanged: b
     id: bundleId,
     spec_version: '2.1',
     objects: [
+      tlpConfig.stixMarkingDefinition,
       {
         type: 'threat-actor',
         spec_version: '2.1',
@@ -218,7 +246,8 @@ export function downloadReportAsStixJson(report: ThreatReportData, isDefanged: b
         modified: new Date().toISOString(),
         name: report.threatActor,
         threat_actor_types: ['cybercrime', 'state-sponsored'],
-        labels: ['threat-actor', report.cveId]
+        labels: ['threat-actor', report.cveId],
+        object_marking_refs: [tlpConfig.stixMarkingRef]
       },
       {
         type: 'report',
@@ -231,10 +260,13 @@ export function downloadReportAsStixJson(report: ThreatReportData, isDefanged: b
         report_types: ['threat-report', 'vulnerability-advisory'],
         published: new Date().toISOString(),
         object_refs: [actorId],
+        object_marking_refs: [tlpConfig.stixMarkingRef],
         custom_properties: {
           cve_id: report.cveId,
           cvss_score: report.cvssScore,
           severity: report.severity,
+          tlp: tlpConfig.level,
+          tlp_scope: tlpConfig.recipientScope,
           defang_status: isDefanged ? 'DEFANGED' : 'RAW',
           technical_summary: report.technicalSummary,
           iocs: {
@@ -250,39 +282,40 @@ export function downloadReportAsStixJson(report: ThreatReportData, isDefanged: b
     ]
   };
 
-  const filename = `${report.cveId}_STIX21_Bundle_${isDefanged ? 'Defanged' : 'Raw'}.json`;
+  const filename = `${report.cveId}_STIX21_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.json`;
   downloadFile(JSON.stringify(stixBundle, null, 2), filename, 'application/json');
 }
 
 /**
- * Download IOCs as CSV file.
+ * Download IOCs as CSV file with TLP classification column.
  */
 export function downloadIocsCsv(report: ThreatReportData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(report.tlp);
 
   const rows = [
-    ['Type', 'Value', 'CVE_ID', 'Threat_Actor', 'Defang_Status', 'Time_Window']
+    ['Type', 'Value', 'CVE_ID', 'TLP_Marking', 'Threat_Actor', 'Defang_Status', 'Time_Window']
   ];
 
   report.iocs.ips.forEach((ip) => {
-    rows.push(['IPv4', formatIp(ip), report.cveId, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
+    rows.push(['IPv4', formatIp(ip), report.cveId, tlpConfig.level, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
   });
 
   report.iocs.domains.forEach((dom) => {
-    rows.push(['Domain', formatDomain(dom), report.cveId, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
+    rows.push(['Domain', formatDomain(dom), report.cveId, tlpConfig.level, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
   });
 
   report.iocs.hashes.forEach((hash) => {
-    rows.push(['SHA256_Hash', hash, report.cveId, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
+    rows.push(['SHA256_Hash', hash, report.cveId, tlpConfig.level, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
   });
 
   report.iocs.processes.forEach((proc) => {
-    rows.push(['Process_Vector', proc.replace(/,/g, ';'), report.cveId, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
+    rows.push(['Process_Vector', proc.replace(/,/g, ';'), report.cveId, tlpConfig.level, report.threatActor, isDefanged ? 'DEFANGED' : 'RAW', report.timeWindow]);
   });
 
   const csvContent = rows.map((r) => r.join(',')).join('\n');
-  const filename = `${report.cveId}_IOCs_${isDefanged ? 'Defanged' : 'Raw'}.csv`;
+  const filename = `${report.cveId}_IOCs_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.csv`;
   downloadFile(csvContent, filename, 'text/csv');
 }
 
@@ -294,15 +327,20 @@ export function downloadAllReportsJson(reports: ThreatReportData[], isDefanged: 
     exportedAt: new Date().toISOString(),
     totalReports: reports.length,
     defangedMode: isDefanged,
-    reports: reports.map((r) => ({
-      ...r,
-      iocs: {
-        ips: r.iocs.ips.map((ip) => (isDefanged ? defangIp(ip) : ip)),
-        domains: r.iocs.domains.map((dom) => (isDefanged ? defangDomain(dom) : dom)),
-        hashes: r.iocs.hashes,
-        processes: r.iocs.processes
-      }
-    }))
+    reports: reports.map((r) => {
+      const cfg = getTlpConfig(r.tlp);
+      return {
+        ...r,
+        tlp: cfg.level,
+        tlpScope: cfg.recipientScope,
+        iocs: {
+          ips: r.iocs.ips.map((ip) => (isDefanged ? defangIp(ip) : ip)),
+          domains: r.iocs.domains.map((dom) => (isDefanged ? defangDomain(dom) : dom)),
+          hashes: r.iocs.hashes,
+          processes: r.iocs.processes
+        }
+      };
+    })
   };
 
   const filename = `Tejax_24H_Threat_Reports_Bundle_${new Date().toISOString().slice(0, 10)}.json`;
@@ -315,18 +353,20 @@ export function downloadAllReportsJson(reports: ThreatReportData[], isDefanged: 
 export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(digest.tlp);
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${digest.title} - Tejax Cyber Intelligence</title>
+  <title>${digest.title} [${tlpConfig.level}] - Tejax Cyber Intelligence</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0b1329; color: #e2e8f0; margin: 0; padding: 32px; line-height: 1.6; }
     .container { max-width: 860px; margin: 0 auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 36px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+    .tlp-banner { background-color: ${tlpConfig.bannerBgColor}; border: 1px solid ${tlpConfig.bannerBorderColor}; border-left: 6px solid ${tlpConfig.hexColor}; padding: 14px 18px; border-radius: 8px; margin-bottom: 24px; font-family: monospace; }
     .header { border-bottom: 2px solid #1e293b; padding-bottom: 20px; margin-bottom: 24px; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; font-weight: bold; margin-right: 8px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; font-weight: bold; margin-right: 8px; margin-bottom: 6px; }
     .badge-cadence { background: #083344; color: #38bdf8; border: 1px solid #0284c7; }
     .badge-threat { background: #450a0a; color: #f87171; border: 1px solid #ef4444; }
     .badge-defang { background: #064e3b; color: #34d399; border: 1px solid #059669; }
@@ -351,8 +391,26 @@ export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boole
 </head>
 <body>
   <div class="container">
+    <!-- FIRST TLP 2.0 CLASSIFICATION BANNER -->
+    <div class="tlp-banner">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span style="color: ${tlpConfig.textColor}; font-weight: bold; font-size: 13px; letter-spacing: 0.5px;">
+          TRAFFIC LIGHT PROTOCOL: ${tlpConfig.level} &bull; ${tlpConfig.recipientScope.toUpperCase()}
+        </span>
+        <span style="font-size: 10px; color: #94a3b8; background: #020617; padding: 2px 8px; border-radius: 4px; border: 1px solid #1e293b;">
+          FIRST TLP 2.0 PROTOCOL
+        </span>
+      </div>
+      <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">
+        <strong>Sharing Boundary:</strong> ${tlpConfig.sharingBoundary}
+      </div>
+    </div>
+
     <div class="header">
       <div>
+        <span class="badge" style="background: ${tlpConfig.bannerBgColor}; color: ${tlpConfig.textColor}; border: 1px solid ${tlpConfig.bannerBorderColor};">
+          ${tlpConfig.level}
+        </span>
         <span class="badge badge-cadence">${digest.cadence} DIGEST</span>
         <span class="badge badge-threat">THREAT LEVEL: ${digest.threatLevel}</span>
         <span class="badge badge-defang">${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'}</span>
@@ -394,10 +452,12 @@ export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boole
     <div class="box">${digest.executiveSummary}</div>
 
     <div class="section-title">2. Key Threat Trends & Observations</div>
-    ${digest.keyTrends.map(trend => `<div class="list-item">• ${trend}</div>`).join('')}
+    ${digest.keyTrends.map((trend) => `<div class="list-item">&bull; ${trend}</div>`).join('')}
 
     <div class="section-title">3. Top Targeted CVEs & Ingress Vulnerabilities</div>
-    ${digest.topTargetedCVEs.map(c => `
+    ${digest.topTargetedCVEs
+      .map(
+        (c) => `
       <div class="cve-card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
           <strong style="color: #38bdf8; font-family: monospace;">${c.cveId} - CVSS ${c.cvss} (${c.severity})</strong>
@@ -406,10 +466,14 @@ export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boole
         <div style="font-size: 13px; font-weight: 600; color: #f8fafc; margin-bottom: 4px;">${c.title}</div>
         <div style="font-size: 12px; color: #94a3b8;"><strong>Affected:</strong> ${c.affectedSoftware} &nbsp;|&nbsp; <strong>Status:</strong> <span style="color: #f59e0b;">${c.exploitStatus}</span></div>
       </div>
-    `).join('')}
+    `
+      )
+      .join('')}
 
     <div class="section-title">4. Active Threat Actor Campaigns</div>
-    ${digest.activeActorCampaigns.map(a => `
+    ${digest.activeActorCampaigns
+      .map(
+        (a) => `
       <div class="actor-card">
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <strong style="color: #f43f5e; font-size: 13px;">${a.actorName}</strong>
@@ -419,38 +483,41 @@ export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boole
         <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;"><strong>Primary TTP:</strong> <span style="color: #38bdf8; font-family: monospace;">${a.primaryTTP}</span></div>
         <div style="font-size: 12px; color: #94a3b8;"><strong>Motivation:</strong> ${a.motivation}</div>
       </div>
-    `).join('')}
+    `
+      )
+      .join('')}
 
     <div class="section-title">5. Aggregated Defanged IOCs (${isDefanged ? 'Safe' : 'Raw'})</div>
     <div class="ioc-grid">
       <div class="ioc-card">
         <div style="color: #64748b; font-weight: bold; margin-bottom: 6px;">IP ADDRESSES:</div>
-        ${digest.topIocs.ips.map(ip => `<div class="ioc-item">${formatIp(ip)}</div>`).join('')}
+        ${digest.topIocs.ips.map((ip) => `<div class="ioc-item">${formatIp(ip)}</div>`).join('')}
       </div>
       <div class="ioc-card">
         <div style="color: #64748b; font-weight: bold; margin-bottom: 6px;">C2 DOMAINS:</div>
-        ${digest.topIocs.domains.map(dom => `<div class="ioc-item-domain">${formatDomain(dom)}</div>`).join('')}
+        ${digest.topIocs.domains.map((dom) => `<div class="ioc-item-domain">${formatDomain(dom)}</div>`).join('')}
       </div>
     </div>
     <div class="ioc-card" style="margin-top: 10px;">
       <div style="color: #64748b; font-weight: bold; margin-bottom: 6px;">SHA-256 HASHES:</div>
-      ${digest.topIocs.hashes.map(h => `<div class="ioc-item-hash">${h}</div>`).join('')}
+      ${digest.topIocs.hashes.map((h) => `<div class="ioc-item-hash">${h}</div>`).join('')}
     </div>
 
     <div class="section-title">6. Strategic Recommendations</div>
-    ${digest.strategicRecommendations.map(rec => `<div class="list-item">✓ ${rec}</div>`).join('')}
+    ${digest.strategicRecommendations.map((rec) => `<div class="list-item">&check; ${rec}</div>`).join('')}
 
     <div class="section-title">7. Operational SOC Actions</div>
-    ${digest.operationalActions.map(action => `<div class="list-item">⚡ ${action}</div>`).join('')}
+    ${digest.operationalActions.map((action) => `<div class="list-item">&#9889; ${action}</div>`).join('')}
 
     <div class="footer">
-      Tejax AI Cyber Threat Intelligence Engine • Confidential CISO Security Governance Document • Generated ${new Date().toISOString()}
+      Tejax AI Cyber Threat Intelligence Engine &bull; Confidential CISO Security Governance &bull; ${tlpConfig.level}<br>
+      Generated ${new Date().toISOString()}
     </div>
   </div>
 </body>
 </html>`;
 
-  const filename = `${digest.id}_${digest.cadence}_Threat_Digest_${isDefanged ? 'Defanged' : 'Raw'}.html`;
+  const filename = `${digest.id}_${digest.cadence}_Threat_Digest_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.html`;
   downloadFile(htmlContent, filename, 'text/html');
 }
 
@@ -460,10 +527,15 @@ export function downloadDigestAsHtml(digest: ThreatDigestData, isDefanged: boole
 export function downloadDigestAsMarkdown(digest: ThreatDigestData, isDefanged: boolean = true) {
   const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
   const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+  const tlpConfig = getTlpConfig(digest.tlp);
 
   const mdContent = `# ${digest.title}
-**Cadence:** ${digest.cadence} | **Time Window:** ${digest.timeWindowLabel} (${digest.startDate} - ${digest.endDate})
-**Threat Level:** ${digest.threatLevel} | **Defang Status:** ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'} | **Digest ID:** ${digest.id}
+
+> **CLASSIFICATION: ${tlpConfig.level}** (${tlpConfig.recipientScope})  
+> **Sharing Boundary:** ${tlpConfig.sharingBoundary}
+
+**Cadence:** ${digest.cadence} | **Time Window:** ${digest.timeWindowLabel} (${digest.startDate} - ${digest.endDate})  
+**Threat Level:** ${digest.threatLevel} | **TLP:** \`${tlpConfig.level}\` | **Defang Status:** ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'} | **Digest ID:** ${digest.id}  
 
 ---
 
@@ -539,10 +611,10 @@ ${digest.strategicRecommendations.map((r) => `- [ ] ${r}`).join('\n')}
 ${digest.operationalActions.map((a) => `- [ ] ${a}`).join('\n')}
 
 ---
-*Generated by Tejax AI Cyber Threat Intelligence Engine on ${new Date().toISOString()}*
+*Classification: ${tlpConfig.level} &bull; Generated by Tejax AI Cyber Threat Intelligence Engine on ${new Date().toISOString()}*
 `;
 
-  const filename = `${digest.id}_${digest.cadence}_Threat_Digest_${isDefanged ? 'Defanged' : 'Raw'}.md`;
+  const filename = `${digest.id}_${digest.cadence}_Threat_Digest_${tlpConfig.code}_${isDefanged ? 'Defanged' : 'Raw'}.md`;
   downloadFile(mdContent, filename, 'text/markdown');
 }
 
@@ -552,4 +624,3 @@ ${digest.operationalActions.map((a) => `- [ ] ${a}`).join('\n')}
 export function downloadDigestAsPdf(digest: ThreatDigestData, isDefanged: boolean = true) {
   downloadDigestAsHtml(digest, isDefanged);
 }
-

@@ -222,6 +222,9 @@ export interface OSINTAdvisory {
   rawFeedUrl?: string;
 }
 
+import { TLPLevel } from './tlp';
+export type { TLPLevel };
+
 export interface ThreatReportData {
   id: string;
   title: string;
@@ -237,6 +240,7 @@ export interface ThreatReportData {
   technicalSummary: string;
   assignedAnalyst?: string;
   reportType?: 'daily_24h' | 'on_demand' | 'custom';
+  tlp?: TLPLevel;
   iocs: {
     ips: string[];
     domains: string[];

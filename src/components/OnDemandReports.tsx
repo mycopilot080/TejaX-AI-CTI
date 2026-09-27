@@ -16,9 +16,12 @@ import {
   Globe, 
   Cpu, 
   Lock,
-  Share2
+  Share2,
+  Edit3
 } from 'lucide-react';
 import { ThreatReportData, defangIp, defangDomain } from './ThreatReports';
+import { TLPLevel, getTlpConfig } from '../types/tlp';
+import { TLPSelector, TLPBadge } from './TLPSelector';
 import { 
   subscribeThreatReports, 
   saveThreatReportToFirestore, 
@@ -57,60 +60,65 @@ export const OnDemandReports: React.FC = () => {
   const [selectedReportIds, setSelectedReportIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
+  const [tlpFilter, setTlpFilter] = useState<string>('ALL');
   const [isDefanged, setIsDefanged] = useState<boolean>(true);
   const [downloadDropdownOpen, setDownloadDropdownOpen] = useState<boolean>(false);
   const [downloadFormat, setDownloadFormat] = useState<string>('pdf');
   const [bulkDownloadFormat, setBulkDownloadFormat] = useState<'json' | 'csv' | 'pdf'>('json');
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
 
-  const handleSelectAll = () => {
-    if (selectedReportIds.length === filteredReports.length) {
-      setSelectedReportIds([]);
-    } else {
-      setSelectedReportIds(filteredReports.map(r => r.id));
-    }
-  };
-
-  const handleDownloadSelected = () => {
-    const reportsToDownload = reports.filter(r => selectedReportIds.includes(r.id));
-    if (reportsToDownload.length === 0) {
-      showFeedback('Please check/select at least one report using checkboxes.');
-      return;
-    }
-
-    if (bulkDownloadFormat === 'json') {
-      downloadAllReportsJson(reportsToDownload, isDefanged);
-      showFeedback(`Downloaded ${reportsToDownload.length} selected reports as JSON bundle (.json).`);
-    } else if (bulkDownloadFormat === 'csv') {
-      const rows = [
-        ['Report_ID', 'CVE_ID', 'Title', 'Severity', 'Threat_Actor', 'IOC_Type', 'IOC_Value', 'Time_Window']
-      ];
-      reportsToDownload.forEach(r => {
-        const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
-        const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
-        r.iocs.ips.forEach(ip => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, `"${r.threatActor}"`, 'IPv4', formatIp(ip), r.timeWindow]));
-        r.iocs.domains.forEach(dom => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, `"${r.threatActor}"`, 'Domain', formatDomain(dom), r.timeWindow]));
-        r.iocs.hashes.forEach(h => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, `"${r.threatActor}"`, 'SHA256', h, r.timeWindow]));
-      });
-      const csvContent = rows.map(r => r.join(',')).join('\n');
-      downloadFile(csvContent, `Tejax_Selected_Reports_IOCs_${isDefanged ? 'Defanged' : 'Raw'}.csv`, 'text/csv');
-      showFeedback(`Exported combined CSV for ${reportsToDownload.length} selected reports (.csv).`);
-    } else if (bulkDownloadFormat === 'pdf') {
-      reportsToDownload.forEach((r, idx) => {
-        setTimeout(() => {
-          downloadReportAsPdf(r, isDefanged);
-        }, idx * 600);
-      });
-      showFeedback(`Triggering PDF exports for ${reportsToDownload.length} selected reports (.pdf).`);
-    }
-  };
-
   // Generator Modal State
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [topic, setTopic] = useState<string>('Zero-Day Supply Chain Compromise & DLL Hijacking');
   const [severity, setSeverity] = useState<'CRITICAL' | 'HIGH' | 'MEDIUM'>('CRITICAL');
   const [timeWindow, setTimeWindow] = useState<string>('Last 24 Hours');
+  const [onDemandTlp, setOnDemandTlp] = useState<TLPLevel>('TLP:AMBER');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+
+  // Edit Report Modal State
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [editReportId, setEditReportId] = useState<string>('');
+  const [editTitle, setEditTitle] = useState<string>('');
+  const [editSeverity, setEditSeverity] = useState<'CRITICAL' | 'HIGH' | 'MEDIUM'>('CRITICAL');
+  const [editTlp, setEditTlp] = useState<TLPLevel>('TLP:AMBER');
+  const [editSummary, setEditSummary] = useState<string>('');
+  const [editThreatActor, setEditThreatActor] = useState<string>('');
+
+  const handleOpenEditModal = (report: ThreatReportData) => {
+    setEditReportId(report.id);
+    setEditTitle(report.title);
+    setEditSeverity(report.severity);
+    setEditTlp(report.tlp || 'TLP:AMBER');
+    setEditSummary(report.executiveSummary || '');
+    setEditThreatActor(report.threatActor || '');
+    setEditModalOpen(true);
+  };
+
+  const handleSaveReportEdit = () => {
+    if (!editReportId) return;
+    const updatedReports = reports.map((r) => {
+      if (r.id === editReportId) {
+        const updated: ThreatReportData = {
+          ...r,
+          title: editTitle,
+          severity: editSeverity,
+          tlp: editTlp,
+          executiveSummary: editSummary,
+          threatActor: editThreatActor
+        };
+        saveThreatReportToFirestore(updated);
+        return updated;
+      }
+      return r;
+    });
+    setReports(updatedReports);
+    const updatedSelected = updatedReports.find(r => r.id === editReportId);
+    if (updatedSelected) {
+      setSelectedReport(updatedSelected);
+    }
+    setEditModalOpen(false);
+    showFeedback(`Saved edits for ${updatedSelected?.cveId || editReportId} (TLP: ${editTlp}) & updated Firestore.`);
+  };
 
   const showFeedback = (msg: string) => {
     setDownloadFeedback(msg);
@@ -156,6 +164,7 @@ export const OnDemandReports: React.FC = () => {
           ],
           mitreTtp: 'T1059.001 - Command and Scripting Interpreter: PowerShell',
           killChainStage: 'Execution / Exploitation',
+          tlp: onDemandTlp,
           references: [
             { title: 'Tejax On-Demand CTI Telemetry Analysis', url: 'https://cisa.gov', source: 'Tejax CTI Engine' }
           ]
@@ -182,6 +191,7 @@ export const OnDemandReports: React.FC = () => {
         technicalSummary: 'Automated on-demand incident analysis and indicator correlation.',
         mitreTtp: 'T1204 - User Execution',
         killChainStage: 'Execution',
+        tlp: onDemandTlp,
         iocs: {
           ips: ['198.51.100.88', '45.154.255.10'],
           domains: ['ondemand-c2-node.ru'],
@@ -215,12 +225,70 @@ export const OnDemandReports: React.FC = () => {
     }
   };
 
+  const handleUpdateReportTlp = (reportId: string, newTlp: TLPLevel) => {
+    const updatedReports = reports.map((r) => {
+      if (r.id === reportId) {
+        const updated = { ...r, tlp: newTlp };
+        saveThreatReportToFirestore(updated);
+        return updated;
+      }
+      return r;
+    });
+    setReports(updatedReports);
+    setSelectedReport((prev) => (prev && prev.id === reportId ? { ...prev, tlp: newTlp } : prev));
+    showFeedback(`Updated report ${selectedReport?.cveId || reportId} TLP to ${newTlp} & synced to Firestore.`);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedReportIds.length === filteredReports.length) {
+      setSelectedReportIds([]);
+    } else {
+      setSelectedReportIds(filteredReports.map(r => r.id));
+    }
+  };
+
+  const handleDownloadSelected = () => {
+    const reportsToDownload = reports.filter(r => selectedReportIds.includes(r.id));
+    if (reportsToDownload.length === 0) {
+      showFeedback('Please check/select at least one report using checkboxes.');
+      return;
+    }
+
+    if (bulkDownloadFormat === 'json') {
+      downloadAllReportsJson(reportsToDownload, isDefanged);
+      showFeedback(`Downloaded ${reportsToDownload.length} selected reports as JSON bundle (.json).`);
+    } else if (bulkDownloadFormat === 'csv') {
+      const rows = [
+        ['Report_ID', 'CVE_ID', 'Title', 'Severity', 'TLP', 'Threat_Actor', 'IOC_Type', 'IOC_Value', 'Time_Window']
+      ];
+      reportsToDownload.forEach(r => {
+        const formatIp = (ip: string) => (isDefanged ? defangIp(ip) : ip);
+        const formatDomain = (dom: string) => (isDefanged ? defangDomain(dom) : dom);
+        const reportTlp = r.tlp || 'TLP:AMBER';
+        r.iocs.ips.forEach(ip => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, reportTlp, `"${r.threatActor}"`, 'IPv4', formatIp(ip), r.timeWindow]));
+        r.iocs.domains.forEach(dom => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, reportTlp, `"${r.threatActor}"`, 'Domain', formatDomain(dom), r.timeWindow]));
+        r.iocs.hashes.forEach(h => rows.push([r.id, r.cveId, `"${r.title.replace(/"/g, '""')}"`, r.severity, reportTlp, `"${r.threatActor}"`, 'SHA256', h, r.timeWindow]));
+      });
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      downloadFile(csvContent, `Tejax_Selected_Reports_IOCs_${isDefanged ? 'Defanged' : 'Raw'}.csv`, 'text/csv');
+      showFeedback(`Exported combined CSV for ${reportsToDownload.length} selected reports (.csv).`);
+    } else if (bulkDownloadFormat === 'pdf') {
+      reportsToDownload.forEach((r, idx) => {
+        setTimeout(() => {
+          downloadReportAsPdf(r, isDefanged);
+        }, idx * 600);
+      });
+      showFeedback(`Triggering PDF exports for ${reportsToDownload.length} selected reports (.pdf).`);
+    }
+  };
+
   const filteredReports = reports.filter(r => {
     const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           r.cveId.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           r.threatActor.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSeverity = severityFilter === 'ALL' || r.severity === severityFilter;
-    return matchesSearch && matchesSeverity;
+    const matchesTlp = tlpFilter === 'ALL' || (r.tlp || 'TLP:AMBER') === tlpFilter;
+    return matchesSearch && matchesSeverity && matchesTlp;
   });
 
   return (
@@ -296,20 +364,35 @@ export const OnDemandReports: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'].map((sev) => (
-                <button
-                  key={sev}
-                  onClick={() => setSeverityFilter(sev)}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all whitespace-nowrap ${
-                    severityFilter === sev
-                      ? 'bg-cyan-500 text-slate-950 shadow'
-                      : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                >
-                  {sev}
-                </button>
-              ))}
+            <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
+              <div className="flex items-center gap-1.5">
+                {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM'].map((sev) => (
+                  <button
+                    key={sev}
+                    onClick={() => setSeverityFilter(sev)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all whitespace-nowrap ${
+                      severityFilter === sev
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {sev}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={tlpFilter}
+                onChange={(e) => setTlpFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-[10px] font-mono text-cyan-400 rounded px-2 py-0.5 focus:outline-none"
+                title="Filter reports by TLP level"
+              >
+                <option value="ALL">TLP: ALL</option>
+                <option value="TLP:RED">TLP:RED</option>
+                <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT</option>
+                <option value="TLP:AMBER">TLP:AMBER</option>
+                <option value="TLP:GREEN">TLP:GREEN</option>
+                <option value="TLP:CLEAR">TLP:CLEAR</option>
+              </select>
             </div>
 
             {/* SELECT ALL & BULK DOWNLOAD BAR */}
@@ -385,6 +468,7 @@ export const OnDemandReports: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
+                        <TLPBadge level={report.tlp || 'TLP:AMBER'} size="xs" />
                         <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
                           report.severity === 'CRITICAL' ? 'bg-red-950 text-red-400 border border-red-800' :
                           report.severity === 'HIGH' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
@@ -402,8 +486,9 @@ export const OnDemandReports: React.FC = () => {
                       </div>
                     </div>
 
-                    <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2">
-                      {report.title}
+                    <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 flex items-center gap-1.5">
+                      <TLPBadge level={report.tlp || 'TLP:AMBER'} size="xs" />
+                      <span>{report.title}</span>
                     </h4>
 
                     <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400 font-mono">
@@ -424,7 +509,7 @@ export const OnDemandReports: React.FC = () => {
               {/* REPORT TOP BAR */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="px-2.5 py-0.5 rounded bg-cyan-950 text-cyan-300 font-mono text-xs font-bold border border-cyan-800">
                       {selectedReport.cveId}
                     </span>
@@ -433,10 +518,25 @@ export const OnDemandReports: React.FC = () => {
                     }`}>
                       {selectedReport.severity} (CVSS {selectedReport.cvssScore})
                     </span>
+                    <TLPSelector
+                      value={selectedReport.tlp || 'TLP:AMBER'}
+                      onChange={(newTlp) => handleUpdateReportTlp(selectedReport.id, newTlp)}
+                      label="Customise TLP"
+                      size="sm"
+                    />
                     <span className="text-xs text-slate-400 font-mono">ID: {selectedReport.id}</span>
+                    <button
+                      onClick={() => handleOpenEditModal(selectedReport)}
+                      className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all ml-1"
+                      title="Edit Report parameters & TLP"
+                    >
+                      <Edit3 className="w-3 h-3 text-cyan-400" />
+                      <span>Edit Report</span>
+                    </button>
                   </div>
-                  <h2 className="text-lg font-bold text-white tracking-tight">
-                    {selectedReport.title}
+                  <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2.5 flex-wrap">
+                    <span>{selectedReport.title}</span>
+                    <TLPBadge level={selectedReport.tlp || 'TLP:AMBER'} size="sm" />
                   </h2>
                 </div>
 
@@ -652,6 +752,23 @@ export const OnDemandReports: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 block">Traffic Light Protocol (TLP):</label>
+                  <span className="text-[10px] text-cyan-400 font-mono">FIRST TLP 2.0</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <TLPSelector
+                    value={onDemandTlp}
+                    onChange={setOnDemandTlp}
+                    label="Customise TLP"
+                    size="sm"
+                  />
+                  <span className="text-[11px] text-slate-400 font-sans">
+                    {getTlpConfig(onDemandTlp).recipientScope}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
@@ -677,6 +794,125 @@ export const OnDemandReports: React.FC = () => {
                     <span>Generate & Store Report</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* EDIT REPORT MODAL */}
+      {editModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-sm font-bold text-white">Edit On-Demand Report</h3>
+                <TLPBadge level={editTlp} size="xs" />
+              </div>
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="text-slate-400 hover:text-white font-mono text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Update report metadata, customize the Traffic Light Protocol (TLP) information sharing level, and save updates to Firebase Firestore.
+            </p>
+
+            <div className="space-y-3 font-mono text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 block">Report Title:</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Severity Level:</label>
+                  <select
+                    value={editSeverity}
+                    onChange={(e) => setEditSeverity(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 block">Threat Actor:</label>
+                  <input
+                    type="text"
+                    value={editThreatActor}
+                    onChange={(e) => setEditThreatActor(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-sans focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {/* TLP Selection Dropdown */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 block">Select TLP Level (Dropdown):</label>
+                  <span className="text-[10px] text-cyan-400 font-mono">FIRST TLP 2.0 Standard</span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <TLPSelector
+                      value={editTlp}
+                      onChange={setEditTlp}
+                      label="Select TLP"
+                      size="sm"
+                    />
+                    <select
+                      value={editTlp}
+                      onChange={(e) => setEditTlp(e.target.value as TLPLevel)}
+                      className="bg-slate-900 border border-slate-700 text-xs font-mono text-cyan-300 rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer"
+                    >
+                      <option value="TLP:RED">TLP:RED (Strictly Named Recipients Only)</option>
+                      <option value="TLP:AMBER+STRICT">TLP:AMBER+STRICT (Recipient Org Only)</option>
+                      <option value="TLP:AMBER">TLP:AMBER (Recipient Org & Clients)</option>
+                      <option value="TLP:GREEN">TLP:GREEN (Community & Partners)</option>
+                      <option value="TLP:CLEAR">TLP:CLEAR (Open Public World)</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 font-sans mt-1">
+                  {getTlpConfig(editTlp).description}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 block">Executive Summary:</label>
+                <textarea
+                  rows={3}
+                  value={editSummary}
+                  onChange={(e) => setEditSummary(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-sans text-xs focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveReportEdit}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 shadow-lg shadow-cyan-500/20"
+              >
+                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <span>Save Report & TLP to Firestore</span>
               </button>
             </div>
           </div>

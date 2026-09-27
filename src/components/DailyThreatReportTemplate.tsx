@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { defangIp, defangDomain, defangUrl } from './ThreatReports';
 import { downloadFile } from '../utils/downloadUtils';
+import { TLPLevel, getTlpConfig } from '../types/tlp';
+import { TLPSelector, TLPBadge } from './TLPSelector';
 
 export interface DailyThreatReportTemplateProps {
   onClose?: () => void;
@@ -40,6 +42,7 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
   const [templateStyle, setTemplateStyle] = useState<TemplateStyle>('executive');
   const [isDefanged, setIsDefanged] = useState<boolean>(true);
   const [viewMode, setViewMode] = useState<'preview' | 'html' | 'markdown'>('preview');
+  const [tlp, setTlp] = useState<TLPLevel>('TLP:AMBER');
   
   // Customization fields
   const [organizationName, setOrganizationName] = useState<string>('Tejax Global Enterprise');
@@ -55,24 +58,30 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
 
   const handleDownloadHtml = () => {
     const htmlStr = generateHtmlTemplate();
-    downloadFile(htmlStr, `Daily_Threat_Report_Template_${organizationName.replace(/\s+/g, '_')}_${isDefanged ? 'Defanged' : 'Raw'}.html`, 'text/html');
-    setSendFeedback('Downloaded HTML Email Template file successfully.');
+    const tlpCode = getTlpConfig(tlp).code;
+    downloadFile(htmlStr, `Daily_Threat_Report_Template_${organizationName.replace(/\s+/g, '_')}_${tlpCode}_${isDefanged ? 'Defanged' : 'Raw'}.html`, 'text/html');
+    setSendFeedback(`Downloaded HTML Template with ${tlp} classification.`);
     setDownloadDropdownOpen(false);
     setTimeout(() => setSendFeedback(null), 3500);
   };
 
   const handleDownloadMarkdown = () => {
     const mdStr = generateMarkdownTemplate();
-    downloadFile(mdStr, `Daily_Threat_Report_Summary_${organizationName.replace(/\s+/g, '_')}_${isDefanged ? 'Defanged' : 'Raw'}.md`, 'text/markdown');
-    setSendFeedback('Downloaded Markdown Summary file successfully.');
+    const tlpCode = getTlpConfig(tlp).code;
+    downloadFile(mdStr, `Daily_Threat_Report_Summary_${organizationName.replace(/\s+/g, '_')}_${tlpCode}_${isDefanged ? 'Defanged' : 'Raw'}.md`, 'text/markdown');
+    setSendFeedback(`Downloaded Markdown Summary with ${tlp} classification.`);
     setDownloadDropdownOpen(false);
     setTimeout(() => setSendFeedback(null), 3500);
   };
 
   const handleDownloadJsonConfig = () => {
+    const tlpCfg = getTlpConfig(tlp);
     const jsonConfig = {
       templateType: '24h_daily_threat_report_summary',
       templateStyle,
+      tlp,
+      tlpScope: tlpCfg.recipientScope,
+      tlpSharingBoundary: tlpCfg.sharingBoundary,
       organizationName,
       timeWindow,
       defanged: isDefanged,
@@ -84,8 +93,8 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
       sampleHashes,
       generatedAt: new Date().toISOString()
     };
-    downloadFile(JSON.stringify(jsonConfig, null, 2), `Daily_Threat_Report_Template_Config.json`, 'application/json');
-    setSendFeedback('Downloaded Template Configuration JSON.');
+    downloadFile(JSON.stringify(jsonConfig, null, 2), `Daily_Threat_Report_Template_Config_${tlpCfg.code}.json`, 'application/json');
+    setSendFeedback(`Downloaded Template Config JSON (${tlp}).`);
     setDownloadDropdownOpen(false);
     setTimeout(() => setSendFeedback(null), 3500);
   };
@@ -112,6 +121,7 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
     const isExec = templateStyle === 'executive';
     const isTech = templateStyle === 'technical';
     const isComp = templateStyle === 'compliance';
+    const tlpCfg = getTlpConfig(tlp);
 
     let personaBadgeColor = '#0284c7';
     let personaTitle = 'Executive C-Level Threat Briefing & Strategic Risk Assessment';
@@ -127,7 +137,7 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${personaTitle}</title>
+  <title>${personaTitle} [${tlpCfg.level}]</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0b1329; color: #e2e8f0; margin: 0; padding: 20px; }
     .container { max-width: 680px; margin: 0 auto; background-color: #0f172a; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
@@ -157,7 +167,10 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
             <h1>TEJAX AI • ${personaTitle.toUpperCase()}</h1>
             <p>Organization: ${organizationName} • Window: ${timeWindow}</p>
           </td>
-          <td style="text-align: right;">
+          <td style="text-align: right; white-space: nowrap;">
+            <span class="badge-persona" style="background: ${tlpCfg.bannerBgColor}; color: ${tlpCfg.textColor}; border: 1px solid ${tlpCfg.bannerBorderColor}; margin-right: 6px;">
+              ${tlpCfg.level}
+            </span>
             <span class="badge-persona">${templateStyle.toUpperCase()} FORMAT</span>
           </td>
         </tr>
@@ -165,8 +178,21 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
     </div>
 
     <div class="body-content">
+      <!-- TLP CLASSIFICATION BANNER -->
+      <div style="background-color: ${tlpCfg.bannerBgColor}; border: 1px solid ${tlpCfg.bannerBorderColor}; border-left: 5px solid ${tlpCfg.hexColor}; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-family: monospace;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
+          <strong style="color: ${tlpCfg.textColor}; font-size: 11px; text-transform: uppercase;">
+            TRAFFIC LIGHT PROTOCOL: ${tlpCfg.level} &bull; ${tlpCfg.recipientScope.toUpperCase()}
+          </strong>
+          <span style="font-size: 9px; color: #94a3b8; background: #020617; padding: 2px 6px; border-radius: 4px;">FIRST TLP 2.0</span>
+        </div>
+        <div style="font-size: 10px; color: #cbd5e1; margin-top: 3px;">
+          <strong>Sharing Boundary:</strong> ${tlpCfg.sharingBoundary}
+        </div>
+      </div>
+
       <div style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-bottom: 16px;">
-        <strong>RECIPIENT:</strong> ${recipientEmail} &nbsp;|&nbsp; <strong>DEFANG STATUS:</strong> ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'}
+        <strong>RECIPIENT:</strong> ${recipientEmail} &nbsp;|&nbsp; <strong>DEFANG STATUS:</strong> ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'} &nbsp;|&nbsp; <strong>TLP:</strong> ${tlpCfg.level}
       </div>
 
       ${
@@ -328,12 +354,21 @@ export const DailyThreatReportTemplate: React.FC<DailyThreatReportTemplateProps>
     const isExec = templateStyle === 'executive';
     const isTech = templateStyle === 'technical';
     const isComp = templateStyle === 'compliance';
+    const tlpCfg = getTlpConfig(tlp);
+
+    const tlpBlock = `> **TLP CLASSIFICATION: ${tlpCfg.level}** (${tlpCfg.recipientScope})  
+> **Sharing Boundary:** ${tlpCfg.sharingBoundary}  
+> **Standard:** FIRST TLP 2.0 Protocol  
+
+`;
 
     if (isExec) {
       return `# TEJAX AI • EXECUTIVE C-LEVEL THREAT BRIEFING
-**Organization:** ${organizationName}
+
+${tlpBlock}**Organization:** ${organizationName}
 **Time Window:** ${timeWindow}
 **Recipient:** ${recipientEmail}
+**TLP:** \`${tlpCfg.level}\`
 **Format:** Executive C-Level Risk Assessment
 
 ---
@@ -368,9 +403,11 @@ ${customExecutiveNote}
 
     if (isTech) {
       return `# TEJAX AI • TECHNICAL SOC & EDR TELEMETRY REPORT
-**Organization:** ${organizationName}
+
+${tlpBlock}**Organization:** ${organizationName}
 **Time Window:** ${timeWindow}
 **Recipient:** ${recipientEmail}
+**TLP:** \`${tlpCfg.level}\`
 **Defang Status:** ${isDefanged ? 'DEFANGED (SAFE)' : 'RAW'}
 
 ---
@@ -406,9 +443,11 @@ ${sampleHashes.map((h) => `- \`${h}\``).join('\n')}
     }
 
     return `# TEJAX AI • REGULATORY COMPLIANCE & CISA KEV AUDIT
-**Organization:** ${organizationName}
+
+${tlpBlock}**Organization:** ${organizationName}
 **Time Window:** ${timeWindow}
 **Recipient:** ${recipientEmail}
+**TLP:** \`${tlpCfg.level}\`
 **Format:** Compliance / CISA Audit
 
 ---
@@ -488,11 +527,12 @@ ${customExecutiveNote}
             <Mail className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
               <span>Last 24 Hours Daily Threat Report Summary Notification Template</span>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
                 TEMPLATE BUILDER
               </span>
+              <TLPBadge level={tlp} size="sm" />
             </h3>
             <p className="text-xs text-slate-400">
               Customize, defang, preview, and dispatch the official 24-hour daily security threat summary template.
@@ -666,6 +706,30 @@ ${customExecutiveNote}
                 Compliance / CISA
               </button>
             </div>
+          </div>
+
+          {/* Customizable TLP Classification Picker */}
+          <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-slate-200 font-bold text-xs">Customise TLP Classification:</label>
+              <span className="text-[9px] font-mono text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800">
+                FIRST TLP 2.0
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <TLPSelector
+                value={tlp}
+                onChange={setTlp}
+                label="Template TLP"
+                size="sm"
+              />
+              <span className="text-[10px] text-slate-400 font-mono">
+                Scope: {getTlpConfig(tlp).recipientScope}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-snug">
+              Sets sensitivity marking on generated executive templates, HTML/Markdown exports, and dispatches.
+            </p>
           </div>
 
           {/* Target Email Input & Contact Roster Selector */}

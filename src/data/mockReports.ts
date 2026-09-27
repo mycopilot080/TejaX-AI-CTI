@@ -13,6 +13,7 @@ export const INITIAL_24H_REPORTS: ThreatReportData[] = [
     mitreTtp: 'T1003.001 - OS Credential Dumping: LSASS Memory',
     killChainStage: 'Credential Access / Exploitation',
     reportType: 'daily_24h',
+    tlp: 'TLP:RED',
     executiveSummary:
       'Over the last 24 hours, Tejax Cyber Intelligence detected active zero-day exploitation targeting Windows Local Security Authority Subsystem Service (LSASS) across financial and defense sector endpoints. Threat actors are utilizing an unquoted buffer overflow to dump domain administrator credentials directly from kernel memory space.',
     technicalSummary:
@@ -48,6 +49,7 @@ export const INITIAL_24H_REPORTS: ThreatReportData[] = [
     mitreTtp: 'T1490 - Inhibit System Recovery: Delete Volume Shadow Copies',
     killChainStage: 'Impact / Recovery Inhibition',
     reportType: 'daily_24h',
+    tlp: 'TLP:AMBER+STRICT',
     executiveSummary:
       'A spike in automated vssadmin shadow deletions preceded by high-volume internal SMB traffic was detected across three healthcare asset enclaves. Adversaries deployed customized BlackMatter/LockBit crypters.',
     technicalSummary:
@@ -80,6 +82,7 @@ export const INITIAL_24H_REPORTS: ThreatReportData[] = [
     mitreTtp: 'T1528 - Capture Access Token: OAuth Grant',
     killChainStage: 'Credential Access / Persistence',
     reportType: 'daily_24h',
+    tlp: 'TLP:AMBER',
     executiveSummary:
       'Cloud threat actor Scattered Spider has been observed registering rogue multitenant OAuth applications in Entra ID and Okta environments to gain persistent API access without triggering MFA alerts.',
     technicalSummary:
@@ -115,6 +118,7 @@ export const INITIAL_ONDEMAND_REPORTS: ThreatReportData[] = [
     mitreTtp: 'T1003.001 - OS Credential Dumping: LSASS Memory',
     killChainStage: 'Credential Access / Exploitation',
     reportType: 'on_demand',
+    tlp: 'TLP:AMBER',
     executiveSummary: 'Synthesized on-demand briefing analyzing multi-stage memory injection targeting enterprise LSASS handles and Active Directory domain controllers over the last 24 hours.',
     technicalSummary: 'Attackers leveraged unauthenticated RPC calls combined with custom process hollowing to evade endpoint detection and response (EDR) telemetry.',
     iocs: {
@@ -143,6 +147,7 @@ export const INITIAL_ONDEMAND_REPORTS: ThreatReportData[] = [
     mitreTtp: 'T1078.004 - Valid Accounts: Cloud Accounts',
     killChainStage: 'Defense Evasion / Persistence',
     reportType: 'on_demand',
+    tlp: 'TLP:GREEN',
     executiveSummary: 'Automated 12-hour threat intelligence synthesis detecting unauthorized clusterrolebindings accessing Kubernetes secret vaults.',
     technicalSummary: 'Adversaries utilized compromised service account tokens to query kube-apiserver and exfiltrate production database credentials.',
     iocs: {
