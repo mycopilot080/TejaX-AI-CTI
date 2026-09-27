@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidAdvisory(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 512
+        && data.source is string && data.source.size() <= 128
+        && data.cveId is string && data.cveId.size() <= 64
+        && (data.cvssScore is number || data.cvssScore is int)
+        && data.summary is string && data.summary.size() <= 4096
+        && data.publishedAt is string && data.publishedAt.size() <= 64;
+    }
+
+    function isValidAsset(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.hostname is string && data.hostname.size() <= 128
+        && data.ipAddress is string && data.ipAddress.size() <= 64
+        && data.environment is string && data.environment.size() <= 64
+        && data.tier is string && data.tier.size() <= 64;
+    }
+
+    function isValidContact(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.email is string && data.email.size() <= 128
+        && data.shiftCoverage is string && data.shiftCoverage.size() <= 64;
+    }
+
+    function isValidIncidentTicket(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 512
+        && (data.severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
+        && (data.riskScore is number || data.riskScore is int)
+        && (data.status in ['NEW', 'IN_PROGRESS', 'MITIGATED', 'FALSE_POSITIVE', 'CLOSED'])
+        && (data.slaTargetMinutes is number || data.slaTargetMinutes is int)
+        && data.slaStartTime is string && data.slaStartTime.size() <= 64
+        && data.assignedAnalyst is string && data.assignedAnalyst.size() <= 128
+        && data.affectedHost is string && data.affectedHost.size() <= 128;
+    }
+
+    function isValidThreatReport(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 512
+        && data.severity is string && data.severity.size() <= 32
+        && data.publishedAt is string && data.publishedAt.size() <= 64
+        && data.executiveSummary is string && data.executiveSummary.size() <= 8192;
+    }
+
+    function isValidHuntRequest(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.actorName is string && data.actorName.size() <= 256
+        && data.hypothesis is string && data.hypothesis.size() <= 4096
+        && data.priority is string && data.priority.size() <= 64
+        && data.assignedHunter is string && data.assignedHunter.size() <= 128
+        && data.status is string && data.status.size() <= 64
+        && data.requestedAt is string && data.requestedAt.size() <= 64;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Threat Feeds Collection
+    match /threat_feeds/{advisoryId} {
+      allow read: if true;
+      allow create: if isValidId(advisoryId) && isValidAdvisory(incoming());
+      allow update: if isValidId(advisoryId) && isValidAdvisory(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // Assets Collection
+    match /assets/{assetId} {
+      allow read: if true;
+      allow create: if isValidId(assetId) && isValidAsset(incoming());
+      allow update: if isValidId(assetId) && isValidAsset(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // Contacts Collection
+    match /contacts/{contactId} {
+      allow read: if true;
+      allow create: if isValidId(contactId) && isValidContact(incoming());
+      allow update: if isValidId(contactId) && isValidContact(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // Incident Tickets Collection
+    match /incident_tickets/{ticketId} {
+      allow read: if true;
+      allow create: if isValidId(ticketId) && isValidIncidentTicket(incoming());
+      allow update: if isValidId(ticketId) && isValidIncidentTicket(incoming());
+      allow delete: if true;
+    }
+
+    // Threat Reports Collection (24-Hour & On-Demand)
+    match /threat_reports/{reportId} {
+      allow read: if true;
+      allow create: if isValidId(reportId) && isValidThreatReport(incoming());
+      allow update: if isValidId(reportId) && isValidThreatReport(incoming());
+      allow delete: if true;
+    }
+
+    // Threat Hunt Requests Collection
+    match /hunt_requests/{requestId} {
+      allow read: if true;
+      allow create: if isValidId(requestId) && isValidHuntRequest(incoming());
+      allow update: if isValidId(requestId) && isValidHuntRequest(incoming());
+      allow delete: if isSignedIn();
+    }
+  }
+}
