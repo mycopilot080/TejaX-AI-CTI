@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { CTIFeedCollector } from './components/CTIFeedCollector';
 import { SplunkSIEMConsole } from './components/SplunkSIEMConsole';
 import { DetectionCatalog } from './components/DetectionCatalog';
+import { DetectionRuleLibrary } from './components/DetectionRuleLibrary';
 import { IncidentReview } from './components/IncidentReview';
 import { HECCollector } from './components/HECCollector';
 import { ThreatAnalytics } from './components/ThreatAnalytics';
@@ -40,7 +41,11 @@ import {
   subscribeIncidentTickets,
   saveIncidentTicketToFirestore,
   deleteIncidentTicketFromFirestore,
-  fetchIncidentTicketsOnce
+  fetchIncidentTicketsOnce,
+  subscribeDetectionRules,
+  saveDetectionRuleToFirestore,
+  deleteDetectionRuleFromFirestore,
+  fetchDetectionRulesOnce
 } from './lib/firebase';
 
 
@@ -156,9 +161,20 @@ export default function App() {
       }
     });
 
+    // Subscribe to Firestore Detection Rules Collection
+    const unsubscribeRules = subscribeDetectionRules((firestoreRules) => {
+      if (firestoreRules && firestoreRules.length > 0) {
+        setDetectionRules(firestoreRules);
+      } else {
+        // Seed initial detection rules to Firestore if collection is empty
+        INITIAL_DETECTION_RULES.forEach((rule) => saveDetectionRuleToFirestore(rule));
+      }
+    });
+
     return () => {
       unsubscribeFeeds();
       unsubscribeTickets();
+      unsubscribeRules();
     };
   }, []);
 
@@ -193,6 +209,11 @@ export default function App() {
     saveAssetToFirestore(newAsset);
   };
 
+  const handleAddRuleToLibrary = (rule: DetectionRule) => {
+    setDetectionRules((prev) => [rule, ...prev]);
+    saveDetectionRuleToFirestore(rule);
+  };
+
   const handleUpdateAssetVulnerabilityStatus = (assetId: string, cveId: string, newStatus: Vulnerability['patchStatus']) => {
     setAssets((prev) =>
       prev.map((ast) => {
@@ -224,10 +245,13 @@ export default function App() {
       triggerCount: 0,
       splQuery: rule.spl,
       sigmaRule: `title: ${rule.name}\nlogsource:\n  category: process_creation`,
-      kql: `SecurityEvent | where EventID == 4688`,
-      cql: `event_simpleName=ProcessRollup2`
+      kqlQuery: `SecurityEvent | where EventCode == 10`,
+      cqlQuery: `event_simpleName=ProcessRollup2`,
+      elkQuery: `process where event.action == "start"`,
+      yaraRule: `// Signature for ${rule.name}`
     };
     setDetectionRules((prev) => [newRule, ...prev]);
+    saveDetectionRuleToFirestore(newRule);
   };
 
   const handleToggleRule = (ruleId: string) => {
@@ -356,7 +380,8 @@ export default function App() {
       case 'threat-reports': return '24-Hour Threat Intelligence Summary Reports';
       case 'on-demand-reports': return 'On-Demand Intelligence Reports & Storage';
       case 'siem-console': return 'Splunk SIEM';
-      case 'detection-catalog': return 'Detection Catalog';
+      case 'detection-catalog': return 'Detection Intelligence Forge (AI Synthesis)';
+      case 'detection-library': return 'Enterprise Detection Rule Library';
       case 'incident-review': return 'Incidents';
       case 'hec-collector': return 'HTTP Event Collector (HEC) Simulator';
       case 'threat-dashboard': return 'Enterprise Threat Dashboard & Telemetry Analytics';
@@ -385,6 +410,7 @@ export default function App() {
         onChangeTab={setActiveTab}
         incidentsBadgeCount={incidents.filter((i) => i.status === 'NEW').length}
         correlatedThreatsCount={correlatedCount}
+        detectionRulesCount={detectionRules.length}
         isFeedActive={isFeedActive}
         onToggleFeed={() => setIsFeedActive(!isFeedActive)}
         onOpenAIAssistant={() => setAiAssistantOpen(true)}
@@ -453,6 +479,12 @@ export default function App() {
 
           {activeTab === 'detection-catalog' && (
             <DetectionCatalog
+              onAddRuleToLibrary={handleAddRuleToLibrary}
+            />
+          )}
+
+          {activeTab === 'detection-library' && (
+            <DetectionRuleLibrary
               rules={detectionRules}
               onToggleRule={handleToggleRule}
               onSimulateAlert={handleSimulateAlert}

@@ -1,273 +1,417 @@
 import React, { useState } from 'react';
-import { DetectionRule, AdvisorySeverity } from '../types/cti';
-import { ShieldCheck, ToggleLeft, ToggleRight, Play, Code, Search, Filter, AlertTriangle, Layers, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { ThreatReportData, DetectionRule } from '../types/cti';
+import { ALL_INITIAL_REPORTS } from '../data/mockReports';
+import { 
+  ShieldCheck, 
+  Search, 
+  FileText, 
+  Cpu, 
+  Sparkles, 
+  Code, 
+  Terminal, 
+  Database, 
+  ShieldAlert, 
+  CheckCircle2, 
+  RefreshCw,
+  Plus,
+  Play,
+  Layers,
+  ArrowRight,
+  ExternalLink
+} from 'lucide-react';
 
 interface DetectionCatalogProps {
-  rules: DetectionRule[];
-  onToggleRule: (ruleId: string) => void;
-  onSimulateAlert: (rule: DetectionRule) => void;
+  onAddRuleToLibrary: (rule: DetectionRule) => void;
 }
 
-export const DetectionCatalog: React.FC<DetectionCatalogProps> = ({
-  rules,
-  onToggleRule,
-  onSimulateAlert
-}) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedRule, setSelectedRule] = useState<DetectionRule | null>(rules[0] || null);
-  const [activeCodeTab, setActiveCodeTab] = useState<'spl' | 'sigma' | 'kql' | 'cql'>('spl');
-  const [simulatedFeedback, setSimulatedFeedback] = useState<string | null>(null);
+export const DetectionCatalog: React.FC<DetectionCatalogProps> = ({ onAddRuleToLibrary }) => {
+  const [reports] = useState<ThreatReportData[]>(ALL_INITIAL_REPORTS);
+  const [selectedReport, setSelectedRule] = useState<ThreatReportData | null>(reports[0] || null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedRules, setGeneratedRules] = useState<{
+    yara?: string;
+    kql?: string;
+    spl?: string;
+    cql?: string;
+    elk?: string;
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<'yara' | 'kql' | 'spl' | 'cql' | 'elk'>('spl');
+  const [feedback, setFeedback] = useState<string | null>(null);
 
-  const categories = [
-    'ALL',
-    'Endpoint Security',
-    'Identity & Access',
-    'Network Threats',
-    'Cloud Security',
-    'Ransomware',
-    'Zero-Day Exploits'
-  ];
+  const filteredReports = reports.filter(r => 
+    r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.cveId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.threatActor.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const filteredRules = rules.filter((r) => {
-    const matchesCat = selectedCategory === 'ALL' || r.category === selectedCategory;
-    const matchesSearch =
-      r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.mitreTechniques.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesCat && matchesSearch;
-  });
+  const handleGenerateRules = async (report: ThreatReportData) => {
+    setIsGenerating(true);
+    setGeneratedRules(null);
+    try {
+      const res = await fetch('/api/chat/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              sender: 'user',
+              text: `Based on the following threat intelligence report, generate high-fidelity detection rules for Yara, Microsoft Sentinel KQL, Splunk SPL, CrowdStrike CQL, and Elasticsearch EQL/Lucene.
+              
+              Report Title: ${report.title}
+              CVE: ${report.cveId}
+              Technical Summary: ${report.technicalSummary}
+              IOCs: ${JSON.stringify(report.iocs)}
+              MITRE Technique: ${report.mitreTtp}
+              
+              Return the rules in a structured format with clearly labeled code blocks for each platform.`
+            }
+          ],
+          model: 'gemini-3.8-flash'
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.codeBlocks) {
+        const rules: any = {};
+        data.codeBlocks.forEach((block: any) => {
+          const lang = block.label?.toLowerCase() || block.language?.toLowerCase();
+          if (lang.includes('yara')) rules.yara = block.code;
+          else if (lang.includes('kql') || lang.includes('sentinel')) rules.kql = block.code;
+          else if (lang.includes('spl') || lang.includes('splunk')) rules.spl = block.code;
+          else if (lang.includes('cql') || lang.includes('crowdstrike')) rules.cql = block.code;
+          else if (lang.includes('elk') || lang.includes('elastic') || lang.includes('eql')) rules.elk = block.code;
+        });
 
-  const handleSimulate = (rule: DetectionRule) => {
-    onSimulateAlert(rule);
-    setSimulatedFeedback(`Simulated Threat Event triggered for rule "${rule.name}"! Created Notable Incident in SIEM.`);
-    setTimeout(() => setSimulatedFeedback(null), 4000);
+        // Fallback for demo if AI output is sparse
+        setGeneratedRules({
+          yara: rules.yara || `rule Detect_${report.cveId.replace(/-/g, '_')} {\n    meta:\n        description = "Detects ${report.title}"\n        author = "TejaX AI"\n    strings:\n        $s1 = "${report.iocs.hashes[0] || 'malicious_pattern'}"\n    condition:\n        any of them\n}`,
+          kql: rules.kql || `SecurityEvent\n| where EventID == 4688\n| where CommandLine has_any ("${report.iocs.processes.join('", "')}")\n| project TimeGenerated, Computer, Account, CommandLine`,
+          spl: rules.spl || `index=sysmon EventCode=1 OR EventCode=10\n| search Image="*${report.iocs.processes[0] || 'lsass.exe'}*"\n| stats count by host, user, Image, CommandLine`,
+          cql: rules.cql || `DeviceProcessEvents\n| where FileName in~ ("${report.iocs.processes.join('", "')}")\n| summarize count() by DeviceName, UserPrincipalName`,
+          elk: rules.elk || `process where process.name == "${report.iocs.processes[0] || 'cmd.exe'}" and process.command_line : "*${report.iocs.processes[1] || ''}*"`
+        });
+      }
+    } catch (err) {
+      console.error('Error generating rules:', err);
+      setFeedback('Failed to synthesize rules via AI. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDeployToLibrary = () => {
+    if (!selectedReport || !generatedRules) return;
+    
+    const newRule: DetectionRule = {
+      id: `DET-${selectedReport.cveId}-${Math.floor(100 + Math.random() * 900)}`,
+      name: `AI Generated: ${selectedReport.title}`,
+      category: 'Endpoint Security',
+      severity: selectedReport.severity as any,
+      riskScore: selectedReport.cvssScore * 10,
+      description: `Detection logic synthesized from threat report ${selectedReport.id}.`,
+      mitreTechniques: [selectedReport.mitreTtp],
+      enabled: true,
+      splQuery: generatedRules.spl || '',
+      sigmaRule: `title: ${selectedReport.title}\nlogsource:\n  product: windows\ndetection:\n  selection:\n    CommandLine: '*mimikatz*'`,
+      kqlQuery: generatedRules.kql,
+      cqlQuery: generatedRules.cql,
+      elkQuery: generatedRules.elk,
+      yaraRule: generatedRules.yara,
+      triggerCount: 0
+    };
+
+    onAddRuleToLibrary(newRule);
+    setFeedback(`Rule successfully deployed to Enterprise Detection Library!`);
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-950 min-h-[calc(100vh-100px)] text-slate-100">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-            <ShieldCheck className="w-5 h-5" />
+    <div className="p-6 space-y-6 bg-slate-950 min-h-[calc(100vh-100px)] text-slate-100 font-sans">
+      {/* Header */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+            <Cpu className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <span>Production Detection Engineering Catalog</span>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>Detection Engineering Intelligence Catalog</span>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60">
-                {rules.filter((r) => r.enabled).length} / {rules.length} Active Rules
+                AI Synthesis Active
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Enterprise detection rules translated into Splunk SPL, Sigma YAML, Microsoft Sentinel KQL, and CrowdStrike CQL.
+              Browse latest threat intelligence reports and synthesize cross-platform detection rules using Gemini AI.
             </p>
           </div>
         </div>
 
-        {/* Search & Filter bar */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Filter rules by name, technique..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
-            />
-          </div>
+        <div className="relative w-full md:w-80">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Search reports by title, CVE, actor..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500 transition-all"
+          />
         </div>
       </div>
 
-      {simulatedFeedback && (
-        <div className="bg-amber-950/60 border border-amber-500/50 text-amber-200 px-4 py-3 rounded-lg text-xs flex items-center gap-2 animate-fadeIn shadow-lg">
-          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>{simulatedFeedback}</span>
+      {feedback && (
+        <div className="bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-xl text-xs flex items-center gap-2 shadow-xl animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{feedback}</span>
         </div>
       )}
 
-      {/* Category Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-3.5 py-1.5 rounded-lg font-semibold transition-all shrink-0 whitespace-nowrap ${
-              selectedCategory === cat
-                ? 'bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/30'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* Rules Grid (Left) & Selected Rule Code Inspector (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Rule List (6 cols) */}
-        <div className="lg:col-span-6 space-y-3 h-[680px] overflow-y-auto pr-1">
-          {filteredRules.map((rule) => {
-            const isSelected = selectedRule?.id === rule.id;
-            const isCritical = rule.severity === 'CRITICAL';
+        {/* Reports Selection (4 cols) */}
+        <div className="lg:col-span-4 space-y-3 h-[720px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+          <h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 px-1 mb-2 flex items-center gap-2">
+            <FileText className="w-3 h-3" /> Latest Threat Intelligence Reports
+          </h3>
+          {filteredReports.map((report) => {
+            const isSelected = selectedReport?.id === report.id;
             return (
               <div
-                key={rule.id}
-                onClick={() => setSelectedRule(rule)}
-                className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                key={report.id}
+                onClick={() => {
+                  setSelectedRule(report);
+                  setGeneratedRules(null);
+                }}
+                className={`p-4 rounded-xl border transition-all cursor-pointer group ${
                   isSelected
-                    ? 'bg-cyan-950/40 border-cyan-500/60 shadow-md shadow-cyan-500/10'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                    ? 'bg-cyan-950/20 border-cyan-500/60 shadow-lg'
+                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleRule(rule.id);
-                      }}
-                      className="text-cyan-400 hover:text-cyan-300"
-                      title={rule.enabled ? 'Disable Detection' : 'Enable Detection'}
-                    >
-                      {rule.enabled ? (
-                        <ToggleRight className="w-6 h-6 text-emerald-400" />
-                      ) : (
-                        <ToggleLeft className="w-6 h-6 text-slate-600" />
-                      )}
-                    </button>
-                    <span className="text-xs font-mono font-bold text-slate-300">{rule.id}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                      isCritical ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    }`}>
-                      {rule.severity} ({rule.riskScore})
-                    </span>
-                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${
+                    report.severity === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {report.severity}
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-500">{report.id}</span>
                 </div>
-
-                <h3 className="text-xs font-bold text-white mb-1.5 leading-snug">
-                  {rule.name}
-                </h3>
-
-                <p className="text-xs text-slate-400 line-clamp-2 mb-2">
-                  {rule.description}
-                </p>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
-                  <span className="text-slate-500 font-mono">{rule.category}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400 font-mono">Triggers: {rule.triggerCount}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSimulate(rule);
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 font-bold text-[10px] transition-all"
-                    >
-                      <Play className="w-3 h-3" />
-                      <span>Simulate Alert</span>
-                    </button>
-                  </div>
+                <h4 className={`text-xs font-bold transition-colors ${isSelected ? 'text-cyan-400' : 'text-slate-200 group-hover:text-white'}`}>
+                  {report.title}
+                </h4>
+                <div className="flex items-center gap-2 mt-3 text-[10px] text-slate-400 font-mono">
+                  <span className="text-cyan-500/80">{report.cveId}</span>
+                  <span className="w-1 h-1 rounded-full bg-slate-700" />
+                  <span className="truncate">{report.threatActor}</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Selected Rule Code Inspector (6 cols) */}
-        <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 h-[680px] overflow-y-auto">
-          {selectedRule ? (
+        {/* Workspace (8 cols) */}
+        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col h-[720px]">
+          {selectedReport ? (
             <>
-              <div className="border-b border-slate-800 pb-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-slate-800 text-cyan-300 border border-slate-700">
-                    {selectedRule.id} • {selectedRule.category}
-                  </span>
-                  <span className={`px-2.5 py-1 rounded text-xs font-mono font-bold ${
-                    selectedRule.severity === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
-                  }`}>
-                    Risk Score: {selectedRule.riskScore}/100
-                  </span>
-                </div>
-
-                <h3 className="text-sm font-bold text-white">
-                  {selectedRule.name}
-                </h3>
-
-                <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
-                  {selectedRule.description}
-                </p>
-              </div>
-
-              {/* MITRE ATT&CK Mapping */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Mapped MITRE ATT&CK Techniques</span>
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedRule.mitreTechniques.map((tech, idx) => (
-                    <span key={idx} className="px-2.5 py-1 rounded text-xs font-mono bg-slate-950 text-slate-300 border border-slate-800">
-                      {tech}
+              <div className="flex flex-col md:flex-row items-start justify-between gap-4 border-b border-slate-800 pb-5 mb-5">
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                      CVE: {selectedReport.cveId}
                     </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Query Language Inspector Tabs */}
-              <div className="bg-slate-950 rounded-xl border border-slate-800 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Code className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-bold text-white">Rule Query Representation</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                      CVSS: {selectedReport.cvssScore}
+                    </span>
                   </div>
-
-                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
-                    {(['spl', 'sigma', 'kql', 'cql'] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveCodeTab(tab)}
-                        className={`px-2.5 py-1 rounded uppercase font-mono text-[11px] font-bold transition-all ${
-                          activeCodeTab === tab
-                            ? 'bg-cyan-500 text-slate-950 shadow'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {tab === 'spl' ? 'Splunk SPL' : tab === 'sigma' ? 'Sigma' : tab === 'kql' ? 'KQL' : 'CQL'}
-                      </button>
-                    ))}
+                  <h3 className="text-lg font-bold text-white leading-tight">
+                    {selectedReport.title}
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <div className="flex items-center gap-1.5 text-rose-400 font-bold">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>{selectedReport.severity} SEVERITY</span>
+                    </div>
+                    <span className="text-slate-600">|</span>
+                    <span>Tactic: {selectedReport.killChainStage}</span>
                   </div>
                 </div>
 
-                {/* Query Display */}
-                <pre className="p-3.5 rounded-lg bg-slate-900/90 text-cyan-300 font-mono text-xs overflow-x-auto max-h-[220px] border border-slate-800/80 leading-relaxed">
-                  {activeCodeTab === 'spl' && selectedRule.splQuery}
-                  {activeCodeTab === 'sigma' && selectedRule.sigmaRule}
-                  {activeCodeTab === 'kql' && selectedRule.kqlQuery}
-                  {activeCodeTab === 'cql' && selectedRule.cqlQuery}
-                </pre>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-slate-500 font-mono">
-                    Status: {selectedRule.enabled ? 'ACTIVE IN SIEM' : 'DISABLED'}
-                  </span>
+                {!generatedRules && !isGenerating && (
                   <button
-                    onClick={() => handleSimulate(selectedRule)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all shadow"
+                    onClick={() => handleGenerateRules(selectedReport)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-cyan-500/20 transition-all active:scale-95"
                   >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Simulate Live Event Trigger</span>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Detection Rules</span>
                   </button>
-                </div>
+                )}
               </div>
+
+              {isGenerating ? (
+                <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+                  <div className="relative">
+                    <div className="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" />
+                    <Sparkles className="absolute inset-0 m-auto w-6 h-6 text-cyan-400 animate-pulse" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-bold text-cyan-300 font-mono">TejaX AI Synthesis in Progress...</p>
+                    <p className="text-xs text-slate-500">Analyzing report indicators and technical surface for cross-platform signatures.</p>
+                  </div>
+                </div>
+              ) : generatedRules ? (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      {(['spl', 'kql', 'cql', 'elk', 'yara'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setActiveTab(tab)}
+                          className={`px-3.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                            activeTab === tab
+                              ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {tab === 'spl' ? 'Splunk' : tab === 'elk' ? 'ELK' : tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={handleDeployToLibrary}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-[10px] transition-all shadow-md shadow-emerald-500/10"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Deploy to Library</span>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 min-h-0 bg-slate-950 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/50">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+                          {activeTab === 'spl' ? 'Splunk Search Processing Language' : 
+                           activeTab === 'kql' ? 'Kusto Query Language' : 
+                           activeTab === 'cql' ? 'CrowdStrike Query Language' : 
+                           activeTab === 'yara' ? 'YARA Malware Signature' : 'Elasticsearch Query Language'}
+                        </span>
+                      </div>
+                    </div>
+                    <pre className="flex-1 p-5 overflow-auto text-xs font-mono text-cyan-300 selection:bg-cyan-500/30 leading-relaxed scrollbar-thin scrollbar-thumb-slate-800">
+                      {activeTab === 'spl' && generatedRules.spl}
+                      {activeTab === 'kql' && generatedRules.kql}
+                      {activeTab === 'cql' && generatedRules.cql}
+                      {activeTab === 'elk' && generatedRules.elk}
+                      {activeTab === 'yara' && generatedRules.yara}
+                    </pre>
+                  </div>
+
+                  <div className="mt-4 p-4 bg-blue-950/20 border border-blue-500/30 rounded-xl flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                    <div className="text-[11px] text-slate-300 leading-relaxed">
+                      <strong className="text-cyan-400">AI Context:</strong> These rules were generated by correlating the 
+                      <strong className="text-white ml-1">{selectedReport.mitreTtp}</strong> technique against the reported technical artifacts. 
+                      Human validation is recommended before full production deployment.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                          <Layers className="w-3 h-3" /> Technical Analysis
+                        </h4>
+                        <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/40 p-4 rounded-xl border border-slate-800">
+                          {selectedReport.technicalSummary}
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                          <CheckCircle2 className="w-3 h-3" /> Mitigation Recommendations
+                        </h4>
+                        <ul className="space-y-2">
+                          {selectedReport.recommendations.map((rec, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs text-slate-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/60 mt-1.5 shrink-0" />
+                              <span>{rec}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                          <Database className="w-3 h-3" /> Extracted Indicators (IOCs)
+                        </h4>
+                        <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-4 space-y-3">
+                          {selectedReport.iocs.ips.length > 0 && (
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] text-slate-500 font-bold uppercase">Malicious IPs</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {selectedReport.iocs.ips.map(ip => (
+                                  <span key={ip} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-[10px] text-rose-300 font-mono rounded">{ip}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {selectedReport.iocs.hashes.length > 0 && (
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] text-slate-500 font-bold uppercase">File Hashes</span>
+                              <div className="space-y-1">
+                                {selectedReport.iocs.hashes.map(hash => (
+                                  <div key={hash} className="px-2 py-1 bg-slate-900 border border-slate-800 text-[9px] text-slate-400 font-mono rounded truncate">{hash}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                          <ExternalLink className="w-3 h-3" /> Intelligence Sources
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedReport.references.map((ref, i) => (
+                            <a 
+                              key={i} 
+                              href={ref.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-3 bg-slate-950/40 border border-slate-800 rounded-xl hover:bg-slate-800/40 transition-colors group"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-slate-900 group-hover:bg-cyan-500/10 text-slate-500 group-hover:text-cyan-400 transition-colors">
+                                  <ExternalLink className="w-3 h-3" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-slate-300 group-hover:text-white">{ref.source}</span>
+                                  <span className="text-[10px] text-slate-500">{ref.title}</span>
+                                </div>
+                              </div>
+                              <ArrowRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-500 transition-transform group-hover:translate-x-0.5" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-              Select a detection rule to view queries and simulate alerts.
+            <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="p-4 rounded-3xl bg-slate-800/50 border border-slate-700/50">
+                <ShieldCheck className="w-12 h-12 text-slate-600" />
+              </div>
+              <div className="max-w-xs space-y-2">
+                <h3 className="text-sm font-bold text-slate-300">No Intelligence Selected</h3>
+                <p className="text-xs text-slate-500">Select a threat report from the left panel to begin technical analysis and rule synthesis.</p>
+              </div>
             </div>
           )}
         </div>

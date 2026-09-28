@@ -21,6 +21,7 @@ export const ThreatHeatmapView: React.FC = () => {
   const [selectedKillChainStage, setSelectedKillChainStage] = useState<string>('ALL');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
   const [selectedTechnique, setSelectedTechnique] = useState<string | null>(null);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   // Cyber Kill Chain stages combined with MITRE ATT&CK Tactics
   const killChainMatrix = [

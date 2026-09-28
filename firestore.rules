@@ -74,6 +74,14 @@ service cloud.firestore {
         && data.requestedAt is string && data.requestedAt.size() <= 64;
     }
 
+    function isValidDetectionRule(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 512
+        && data.category is string && data.category.size() <= 128
+        && data.severity is string && data.severity.size() <= 32
+        && data.splQuery is string && data.splQuery.size() <= 8192;
+    }
+
     // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
@@ -125,6 +133,14 @@ service cloud.firestore {
       allow create: if isValidId(requestId) && isValidHuntRequest(incoming());
       allow update: if isValidId(requestId) && isValidHuntRequest(incoming());
       allow delete: if isSignedIn();
+    }
+
+    // Detection Rules Collection
+    match /detection_rules/{ruleId} {
+      allow read: if true;
+      allow create: if isValidId(ruleId) && isValidDetectionRule(incoming());
+      allow update: if isValidId(ruleId) && isValidDetectionRule(incoming());
+      allow delete: if true;
     }
   }
 }

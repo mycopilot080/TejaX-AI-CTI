@@ -135,6 +135,27 @@
         "requestedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "actorName", "hypothesis", "priority", "assignedHunter", "status", "requestedAt"]
+    },
+    "DetectionRule": {
+      "title": "Detection Rule",
+      "description": "Represents a security detection rule for platforms like Splunk, KQL, Sigma, etc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 512 },
+        "category": { "type": "string", "maxLength": 128 },
+        "severity": { "type": "string", "maxLength": 32 },
+        "riskScore": { "type": "number" },
+        "description": { "type": "string", "maxLength": 4096 },
+        "mitreTechniques": { "type": "array" },
+        "enabled": { "type": "boolean" },
+        "splQuery": { "type": "string", "maxLength": 8192 },
+        "sigmaRule": { "type": "string", "maxLength": 8192 },
+        "kqlQuery": { "type": "string", "maxLength": 8192 },
+        "cqlQuery": { "type": "string", "maxLength": 8192 },
+        "triggerCount": { "type": "number" }
+      },
+      "required": ["id", "name", "category", "severity", "splQuery"]
     }
   },
   "firestore": {
@@ -161,6 +182,10 @@
     "/hunt_requests/{requestId}": {
       "schema": { "$ref": "#/entities/ThreatHuntRequest" },
       "description": "Collection storing proactive threat hunt mission tickets"
+    },
+    "/detection_rules/{ruleId}": {
+      "schema": { "$ref": "#/entities/DetectionRule" },
+      "description": "Collection storing security detection rules and logic"
     }
   }
 }

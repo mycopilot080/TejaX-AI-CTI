@@ -65,8 +65,8 @@ export interface DetectionRule {
   sigmaRule: string;
   kqlQuery?: string;
   cqlQuery?: string;
-  kql?: string;
-  cql?: string;
+  elkQuery?: string;
+  yaraRule?: string;
   lastTriggered?: string;
   triggerCount: number;
 }

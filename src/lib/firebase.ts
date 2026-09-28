@@ -14,7 +14,7 @@ import {
   limit 
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CTIAdvisory, Asset, ContactDetail, NotableIncident, ThreatReportData, ThreatHuntRequest } from '../types/cti';
+import { CTIAdvisory, Asset, ContactDetail, NotableIncident, ThreatReportData, ThreatHuntRequest, DetectionRule } from '../types/cti';
 import { INITIAL_FEEDS } from '../data/mockFeeds';
 import { INITIAL_ASSETS } from '../data/mockAssets';
 import { INITIAL_CONTACTS } from '../data/mockContacts';
@@ -363,6 +363,69 @@ export async function fetchThreatHuntRequestsOnce(): Promise<ThreatHuntRequest[]
   }
 }
 
+// ============================================================================
+// DETECTION RULES FIRESTORE API
+// ============================================================================
+const DETECTION_RULES_PATH = 'detection_rules';
+
+export async function saveDetectionRuleToFirestore(rule: DetectionRule): Promise<void> {
+  const sanitizeId = rule.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const path = `${DETECTION_RULES_PATH}/${sanitizeId}`;
+  try {
+    const docRef = doc(db, DETECTION_RULES_PATH, sanitizeId);
+    const payload = JSON.parse(JSON.stringify(rule));
+    await setDoc(docRef, payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export function subscribeDetectionRules(
+  onData: (rules: DetectionRule[]) => void,
+  onError?: (err: unknown) => void
+) {
+  try {
+    const q = query(collection(db, DETECTION_RULES_PATH), limit(200));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const rules: DetectionRule[] = snapshot.docs.map((d) => d.data() as DetectionRule);
+          onData(rules);
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, DETECTION_RULES_PATH);
+        if (onError) onError(error);
+      }
+    );
+  } catch (err) {
+    return () => {};
+  }
+}
+
+export async function fetchDetectionRulesOnce(): Promise<DetectionRule[]> {
+  try {
+    const snapshot = await getDocs(collection(db, DETECTION_RULES_PATH));
+    if (snapshot.empty) return [];
+    return snapshot.docs.map((doc) => doc.data() as DetectionRule);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, DETECTION_RULES_PATH);
+    return [];
+  }
+}
+
+export async function deleteDetectionRuleFromFirestore(ruleId: string): Promise<void> {
+  const sanitizeId = ruleId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const path = `${DETECTION_RULES_PATH}/${sanitizeId}`;
+  try {
+    const docRef = doc(db, DETECTION_RULES_PATH, sanitizeId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 export const FIRESTORE_CONFIG_INFO = {
   projectId: firebaseConfig.projectId,
   databaseId: firebaseConfig.firestoreDatabaseId,
@@ -373,7 +436,8 @@ export const FIRESTORE_CONFIG_INFO = {
     threatFeeds: THREAT_FEEDS_PATH,
     assets: ASSETS_PATH,
     contacts: CONTACTS_PATH,
-    huntRequests: HUNT_REQUESTS_PATH
+    huntRequests: HUNT_REQUESTS_PATH,
+    detectionRules: DETECTION_RULES_PATH
   }
 };
 

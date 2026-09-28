@@ -14,6 +14,7 @@ export const OSINTIntelligenceView: React.FC<OSINTIntelligenceViewProps> = ({ on
   const [viewMode, setViewMode] = useState<'stream' | 'zeroday'>('stream');
   const [deployMessage, setDeployMessage] = useState<string | null>(null);
   const [watchlistCves, setWatchlistCves] = useState<string[]>(['CVE-2026-9901']);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const toggleWatchlist = (cveId: string) => {
     if (watchlistCves.includes(cveId)) {
@@ -186,6 +187,7 @@ export const OSINTIntelligenceView: React.FC<OSINTIntelligenceViewProps> = ({ on
   ]);
 
   const handleRefreshOSINT = async () => {
+    setIsRefreshing(true);
     setTimeout(() => {
       const newAdvisory: OSINTAdvisory = {
         id: `osint-new-${Date.now()}`,
@@ -253,10 +255,15 @@ export const OSINTIntelligenceView: React.FC<OSINTIntelligenceViewProps> = ({ on
         <div className="flex items-center gap-3">
           <button
             onClick={handleRefreshOSINT}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-bold text-xs shadow-md shadow-cyan-500/20 transition-all"
+            disabled={isRefreshing}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all ${
+              isRefreshing 
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+                : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400 shadow-cyan-500/20'
+            }`}
           >
-            <RefreshCw className="w-4 h-4" />
-            <span>Fetch Live OSINT Feed</span>
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Fetching Feed...' : 'Fetch Live OSINT Feed'}</span>
           </button>
         </div>
       </div>

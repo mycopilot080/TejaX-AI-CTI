@@ -34,6 +34,7 @@ export type ActiveTab =
   | 'on-demand-reports'
   | 'siem-console'
   | 'detection-catalog'
+  | 'detection-library'
   | 'incident-review'
   | 'hec-collector'
   | 'threat-dashboard'
@@ -52,6 +53,7 @@ interface SidebarNavigationProps {
   onChangeTab: (tab: ActiveTab) => void;
   incidentsBadgeCount: number;
   correlatedThreatsCount?: number;
+  detectionRulesCount?: number;
   isFeedActive: boolean;
   onToggleFeed: () => void;
   onOpenAIAssistant: () => void;
@@ -67,6 +69,7 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
   onChangeTab,
   incidentsBadgeCount,
   correlatedThreatsCount = 5,
+  detectionRulesCount = 18,
   isFeedActive,
   onToggleFeed,
   onOpenAIAssistant,
@@ -156,9 +159,15 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
         },
         {
           id: 'detection-catalog' as ActiveTab,
-          label: 'Detection Catalog',
+          label: 'Intelligence Forge',
+          icon: Sparkles,
+          badge: 'AI'
+        },
+        {
+          id: 'detection-library' as ActiveTab,
+          label: 'Rule Library',
           icon: ShieldCheck,
-          badge: '18 Rules'
+          badge: `${detectionRulesCount} Rules`
         },
         {
           id: 'incident-review' as ActiveTab,
