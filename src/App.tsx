@@ -36,6 +36,7 @@ import {
   saveContactToFirestore, 
   fetchAssetsOnce, 
   fetchContactsOnce,
+  fetchThreatFeedsOnce,
   subscribeIncidentTickets,
   saveIncidentTicketToFirestore,
   deleteIncidentTicketFromFirestore,
@@ -63,6 +64,7 @@ export default function App() {
   const [aiAssistantOpen, setAiAssistantOpen] = useState<boolean>(false);
   const [dispatchModalOpen, setDispatchModalOpen] = useState<boolean>(false);
   const [isCompactView, setIsCompactView] = useState<boolean>(false);
+  const [vulnerabilityTab, setVulnerabilityTab] = useState<'correlation' | 'inventory' | 'contacts'>('correlation');
 
   // Notable Incidents State
   const [incidents, setIncidents] = useState<NotableIncident[]>([
@@ -515,7 +517,9 @@ export default function App() {
             <ExecutiveDashboard
               incidents={incidents}
               assets={assets}
-              setActiveTab={setActiveTab}
+              setActiveTab={(tab) => {
+                setActiveTab(tab);
+              }}
             />
           )}
 

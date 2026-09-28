@@ -17,7 +17,8 @@ import {
   Trash2,
   Database,
   Terminal,
-  Server
+  Server,
+  RefreshCw
 } from 'lucide-react';
 
 interface IncidentReviewProps {

@@ -140,6 +140,16 @@ export const ThreatHeatmapView: React.FC = () => {
         </div>
       </div>
 
+      {refreshMessage && (
+        <div className="bg-cyan-950/90 border border-cyan-500/50 text-cyan-200 px-4 py-3 rounded-lg text-xs flex items-center justify-between shadow-xl font-mono animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>{refreshMessage}</span>
+          </div>
+          <button onClick={() => setRefreshMessage(null)} className="text-cyan-400 hover:text-white text-xs">✕</button>
+        </div>
+      )}
+
       {/* Summary Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">

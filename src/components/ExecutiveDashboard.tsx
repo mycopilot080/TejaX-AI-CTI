@@ -51,7 +51,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
   const criticalCount = incidents.filter(i => i.severity === 'CRITICAL' && i.status !== 'CLOSED').length;
   const highCount = incidents.filter(i => i.severity === 'HIGH' && i.status !== 'CLOSED').length;
-  const criticalAssets = assets.filter(a => a.tier.includes('Critical')).length;
+  const guardedAssetsCount = assets.filter(a => a.vulnerabilities.length === 0).length;
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 min-h-[calc(100vh-100px)] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -118,8 +118,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
       {/* Core Dynamic KPI Grid with Red Blue Green Amber Color Coding */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* GREEN CARD: OPTIMAL POSTURE */}
-        <div className="bg-emerald-950/15 backdrop-blur border border-emerald-500/40 hover:border-emerald-400 rounded-2xl p-5 shadow-xl space-y-3 transition-all group relative overflow-hidden">
+        <button
+          onClick={() => {
+            setActiveTab('vulnerability-management-inventory');
+          }}
+          className="bg-emerald-950/15 backdrop-blur border border-emerald-500/40 hover:border-emerald-400 rounded-2xl p-5 shadow-xl space-y-3 transition-all group relative overflow-hidden text-left w-full"
+        >
           <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 uppercase font-bold">
             <span className="flex items-center gap-1.5 text-emerald-400">
@@ -131,19 +135,22 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </span>
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-white font-mono group-hover:text-emerald-400 transition-colors">Guarded (74)</span>
+            <span className="text-2xl font-black text-white font-mono group-hover:text-emerald-400 transition-colors">Guarded ({guardedAssetsCount})</span>
             <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> -4.2% wk
             </span>
           </div>
           <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden p-0.5 border border-slate-800">
-            <div className="bg-emerald-500 h-full rounded-full w-[74%] shadow-sm shadow-emerald-500" />
+            <div 
+              className="bg-emerald-500 h-full rounded-full shadow-sm shadow-emerald-500 transition-all duration-1000" 
+              style={{ width: `${Math.min(100, (guardedAssetsCount / assets.length) * 100)}%` }}
+            />
           </div>
           <div className="text-[10px] font-mono text-slate-400 flex justify-between">
             <span>SLA: Met (&gt;70 target)</span>
             <span className="text-emerald-400 font-bold">Low Attack Vector</span>
           </div>
-        </div>
+        </button>
 
         {/* RED CARD: CRITICAL ESCALATION */}
         <div className="bg-rose-950/15 backdrop-blur border border-rose-500/40 hover:border-rose-400 rounded-2xl p-5 shadow-xl space-y-3 transition-all group relative overflow-hidden">

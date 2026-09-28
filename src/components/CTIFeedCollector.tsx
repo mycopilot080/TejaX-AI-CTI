@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CTIAdvisory } from '../types/cti';
-import { Play, Pause, FastForward, Globe, Plus, Sparkles, Shield, Cpu, ExternalLink, Code, Layers, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Play, Pause, FastForward, Globe, Plus, Sparkles, Shield, Cpu, ExternalLink, Code, Layers, FileText, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface CTIFeedCollectorProps {
   advisories: CTIAdvisory[];
