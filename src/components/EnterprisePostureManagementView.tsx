@@ -357,6 +357,13 @@ export const EnterprisePostureManagementView: React.FC = () => {
     { source: 'Telegram CTI Channel', date: '3 days ago', snippet: 'Database export sample claiming 45k corporate email records for enterprise.com.', threatActor: 'Unknown Broker', severity: 'MEDIUM' },
   ];
 
+  const credentialLeaks = [
+    { email: 'admin@enterprise.com', source: 'Breach-X Underground', date: '2026-09-24', severity: 'CRITICAL', leakType: 'Cleartext Password / Hash', status: 'Password Reset Forced' },
+    { email: 'hr-lead@enterprise.com', source: 'RaidForums Export', date: '2026-09-22', severity: 'HIGH', leakType: 'Full Profile + PII', status: 'MFA Enforced' },
+    { email: 'finance-manager@enterprise.com', source: 'Underground Marketplace', date: '2026-09-20', severity: 'HIGH', leakType: 'SSO Token / Session Cookie', status: 'Account Isolated' },
+    { email: 'support-agent-04@enterprise.com', source: 'Github Public Secret Scan', date: '2026-09-18', severity: 'MEDIUM', leakType: 'API Key Leak', status: 'Key Rotated' },
+  ];
+
   // Filtered Assets Under Risk
   const filteredRiskAssets = riskAssets.filter((asset) => {
     const q = assetSearchQuery.toLowerCase();
@@ -545,8 +552,11 @@ export const EnterprisePostureManagementView: React.FC = () => {
       {/* Posture Scorecards with Asset Under Risk */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Posture Score */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Enterprise.com Posture Score</div>
+        <div 
+          onClick={() => setActiveTab('subdomains')}
+          className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 cursor-pointer hover:border-cyan-500/50 transition-all group"
+        >
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold group-hover:text-cyan-300">Enterprise.com Posture Score</div>
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-black text-emerald-400 font-mono">89 / 100</span>
             <span className="text-xs font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-900">
@@ -562,10 +572,13 @@ export const EnterprisePostureManagementView: React.FC = () => {
           </div>
         </div>
 
-        {/* NEW: Assets Under Risk Card */}
-        <div className="bg-slate-900 border border-rose-900/60 rounded-xl p-4 shadow space-y-2 relative overflow-hidden">
+        {/* Assets Under Risk Card */}
+        <div 
+          onClick={() => setActiveTab('risk-assets')}
+          className="bg-slate-900 border border-rose-900/60 rounded-xl p-4 shadow space-y-2 relative overflow-hidden cursor-pointer hover:border-rose-500 transition-all group"
+        >
           <div className="absolute top-0 right-0 w-16 h-16 bg-rose-500/5 rounded-bl-full pointer-events-none" />
-          <div className="text-[11px] font-mono text-rose-300 uppercase font-bold flex items-center gap-1.5">
+          <div className="text-[11px] font-mono text-rose-300 uppercase font-bold flex items-center gap-1.5 group-hover:text-rose-400">
             <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
             <span>Assets Under Risk</span>
           </div>
@@ -587,8 +600,11 @@ export const EnterprisePostureManagementView: React.FC = () => {
         </div>
 
         {/* Active Impersonations */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Active Impersonations</div>
+        <div 
+          onClick={() => setActiveTab('impersonation')}
+          className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 cursor-pointer hover:border-amber-500/50 transition-all group"
+        >
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold group-hover:text-amber-300">Active Impersonations</div>
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-black text-amber-400 font-mono">3 Domains</span>
             <span className="text-xs font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-900">
@@ -605,8 +621,11 @@ export const EnterprisePostureManagementView: React.FC = () => {
         </div>
 
         {/* Unpatched CVE Exposure */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Unpatched CVE Exposure</div>
+        <div 
+          onClick={() => setActiveTab('vulnerabilities')}
+          className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 cursor-pointer hover:border-rose-500/50 transition-all group"
+        >
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold group-hover:text-rose-300">Unpatched CVE Exposure</div>
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-black text-rose-400 font-mono">1 Critical</span>
             <span className="text-xs font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-900">
@@ -623,10 +642,13 @@ export const EnterprisePostureManagementView: React.FC = () => {
         </div>
 
         {/* Dark Web Mentions */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Dark Web Credential Leaks</div>
+        <div 
+          onClick={() => setActiveTab('darkweb')}
+          className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 cursor-pointer hover:border-cyan-500 transition-all group"
+        >
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold group-hover:text-cyan-300">Dark Web Credential Leaks</div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-cyan-400 font-mono">2 Mentions</span>
+            <span className="text-2xl font-black text-cyan-400 font-mono">{credentialLeaks.length} Leaks</span>
             <span className="text-xs font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-900">
               Investigating
             </span>
@@ -635,7 +657,7 @@ export const EnterprisePostureManagementView: React.FC = () => {
             <div className="bg-cyan-400 h-full w-[20%]" />
           </div>
           <div className="text-[10px] text-slate-500 font-mono flex justify-between">
-            <span>No Valid Tokens Found</span>
+            <span>Critical Exposure</span>
             <span>SecOps Notified</span>
           </div>
         </div>
@@ -1305,32 +1327,95 @@ export const EnterprisePostureManagementView: React.FC = () => {
 
           {/* TAB 5: DARK WEB MENTIONS */}
           {activeTab === 'darkweb' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold font-mono uppercase text-slate-300">
-                  Dark Web & Underground Threat Actor Mentions for Enterprise.com
-                </h3>
-                <span className="text-xs font-mono text-amber-400">2 Active Intelligence Items</span>
-              </div>
-
-              <div className="space-y-3">
-                {darkwebMentions.map((dw, idx) => (
-                  <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4 text-amber-400" />
-                        <span className="text-xs font-bold text-white">{dw.source}</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-300 border border-amber-900">
-                          Actor: {dw.threatActor}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono">{dw.date}</span>
-                    </div>
-                    <p className="text-xs text-slate-300 font-mono bg-slate-900 p-3 rounded-lg border border-slate-800">
-                      "{dw.snippet}"
-                    </p>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Underground Mentions */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 className="text-xs font-bold font-mono uppercase text-slate-300 flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-cyan-400" />
+                      <span>Dark Web Underground Mentions</span>
+                    </h3>
+                    <span className="text-[10px] font-mono text-amber-400">{darkwebMentions.length} Bulletins</span>
                   </div>
-                ))}
+
+                  <div className="space-y-3">
+                    {darkwebMentions.map((dw, idx) => (
+                      <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2 hover:border-cyan-500/30 transition-all">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-4 h-4 text-amber-400" />
+                            <span className="text-xs font-bold text-white">{dw.source}</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${dw.severity === 'HIGH' ? 'bg-rose-950 text-rose-300' : 'bg-amber-950 text-amber-300'}`}>
+                              Actor: {dw.threatActor}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">{dw.date}</span>
+                        </div>
+                        <p className="text-xs text-slate-300 font-mono bg-slate-900 p-3 rounded-lg border border-slate-800 leading-relaxed">
+                          "{dw.snippet}"
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Specific Credential Leaks */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 className="text-xs font-bold font-mono uppercase text-slate-300 flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-rose-400" />
+                      <span>Exposed Enterprise Credentials</span>
+                    </h3>
+                    <span className="text-[10px] font-mono text-rose-400">{credentialLeaks.length} Exposed Accounts</span>
+                  </div>
+
+                  <div className="overflow-hidden border border-slate-800 rounded-xl shadow-lg">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-slate-950 text-slate-400">
+                        <tr>
+                          <th className="px-4 py-2 border-b border-slate-800">Affected Identity</th>
+                          <th className="px-4 py-2 border-b border-slate-800">Leak Source</th>
+                          <th className="px-4 py-2 border-b border-slate-800">Severity</th>
+                          <th className="px-4 py-2 border-b border-slate-800">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {credentialLeaks.map((leak, idx) => (
+                          <tr key={idx} className="bg-slate-900/40 hover:bg-slate-900 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col">
+                                <span className="text-white font-bold">{leak.email}</span>
+                                <span className="text-[10px] text-slate-500 italic">{leak.leakType}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-300">
+                              <div className="flex flex-col">
+                                <span>{leak.source}</span>
+                                <span className="text-[10px] text-slate-500">{leak.date}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                leak.severity === 'CRITICAL' ? 'bg-rose-950 text-rose-400 border border-rose-900' : 
+                                leak.severity === 'HIGH' ? 'bg-amber-950 text-amber-400 border border-amber-900' : 
+                                'bg-blue-950 text-blue-400 border border-blue-900'
+                              }`}>
+                                {leak.severity}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                <span className="text-emerald-400 font-bold text-[10px]">{leak.status}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           )}
