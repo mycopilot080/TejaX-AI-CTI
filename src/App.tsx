@@ -53,7 +53,7 @@ import {
 import { useFirebase } from './contexts/FirebaseContext';
 
 export default function App() {
-  const { user, loading: authLoading } = useFirebase();
+  const { user, loading: authLoading, logout } = useFirebase();
   const [activeTab, setActiveTab] = useState<ActiveTab>('executive-dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
@@ -64,9 +64,6 @@ export default function App() {
     if (user) {
       setIsAuthenticated(true);
       setCurrentUserEmail(user.email || '');
-    } else {
-      setIsAuthenticated(false);
-      setCurrentUserEmail('');
     }
   }, [user]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -420,7 +417,10 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginScreen />;
+    return <LoginScreen onLogin={(email) => { 
+      setIsAuthenticated(true); 
+      setCurrentUserEmail(email); 
+    }} />;
   }
 
   return (
@@ -439,7 +439,11 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         userEmail={currentUserEmail}
-        onLogout={() => setIsAuthenticated(false)}
+        onLogout={async () => {
+          await logout();
+          setIsAuthenticated(false);
+          setCurrentUserEmail('');
+        }}
       />
 
       {/* Main Content Workspace */}

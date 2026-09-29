@@ -3,21 +3,48 @@ import { ShieldAlert, ShieldCheck, RefreshCw, Chrome } from 'lucide-react';
 import { useFirebase } from '../contexts/FirebaseContext';
 
 interface LoginScreenProps {
-  onLogin?: (email: string) => void;
+  onLogin: (email: string) => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = () => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const { signIn } = useFirebase();
   const [loading, setLoading] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manualEmail, setManualEmail] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setError(null);
     try {
       await signIn();
-    } catch (error) {
-      console.error("Login failed:", error);
+    } catch (err: any) {
+      console.error("Login failed:", err);
+      let errorMsg = "Google Login encountered an error.";
+      
+      if (err.code === 'auth/popup-blocked') {
+        errorMsg = "Popup was blocked by your browser. Please enable popups for this site.";
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        errorMsg = "Login popup was closed before completion.";
+      } else if (err.code === 'auth/unauthorized-domain') {
+        errorMsg = "This domain is not authorized for Google Sign-In. Please use the Manual Access fallback.";
+      }
+      
+      setError(errorMsg);
+      setShowManual(true); // Suggest manual fallback on error
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualEmail.trim()) {
+      setLoading(true);
+      setTimeout(() => {
+        onLogin(manualEmail);
+        setLoading(false);
+      }, 500);
     }
   };
 
@@ -111,6 +138,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
                 )}
               </div>
             </button>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-mono leading-relaxed">
+                ⚠️ {error}
+              </div>
+            )}
+
+            {/* Manual Fallback Option */}
+            <div className="mt-4">
+              {!showManual ? (
+                <button 
+                  onClick={() => setShowManual(true)}
+                  className="text-[10px] text-slate-600 hover:text-cyan-500 font-mono uppercase tracking-widest transition-colors"
+                >
+                  Trouble signing in? Use Manual Analyst Access
+                </button>
+              ) : (
+                <form onSubmit={handleManualLogin} className="space-y-3 animate-fadeIn">
+                  <input
+                    type="email"
+                    value={manualEmail}
+                    onChange={(e) => setManualEmail(e.target.value)}
+                    placeholder="Enter Analyst Email (sharathsmart3@gmail.com)"
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-4 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500/50"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg border border-slate-700 text-[10px] uppercase tracking-widest"
+                  >
+                    Confirm Access
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
 
           <div className="pt-4 border-t border-slate-800/50 flex items-center justify-between text-[9px] text-slate-500 font-mono uppercase tracking-tighter">
