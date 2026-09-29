@@ -12,6 +12,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [showManual, setShowManual] = useState(false);
   const [manualEmail, setManualEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  
+  const [loginMode, setLoginMode] = useState<'google' | 'custom'>('google');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -34,6 +38,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       setShowManual(true); // Suggest manual fallback on error
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCustomLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    
+    // Implementation of requested credentials
+    if (username === 'SHARATH' && password === 'Secure@123') {
+      setLoading(true);
+      setTimeout(() => {
+        onLogin('sharathsmart3@gmail.com');
+        setLoading(false);
+      }, 800);
+    } else {
+      setError('Invalid Analyst Credentials. Access Denied.');
     }
   };
 
@@ -112,32 +132,79 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </div>
 
           <div className="space-y-6">
-            <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800 text-slate-400 text-xs font-mono">
-              <p>Secure Terminal Access Required.</p>
-              <p className="mt-1">Please authenticate using your authorized Google workstation account.</p>
+            <div className="flex bg-slate-950/50 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setLoginMode('google')}
+                className={`flex-1 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-md transition-all ${loginMode === 'google' ? 'bg-slate-800 text-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Workstation
+              </button>
+              <button
+                onClick={() => setLoginMode('custom')}
+                className={`flex-1 py-1.5 text-[10px] font-mono uppercase tracking-widest rounded-md transition-all ${loginMode === 'custom' ? 'bg-slate-800 text-cyan-400 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Analyst ID
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="group relative w-full overflow-hidden py-4 bg-white hover:bg-slate-100 text-slate-950 font-black rounded-xl shadow-lg shadow-white/5 text-xs uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-950/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
-              <div className="relative flex items-center justify-center gap-3">
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Authorizing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Chrome className="w-5 h-5" />
-                    <span>Initialize Google Session</span>
-                  </>
-                )}
-              </div>
-            </button>
+            {loginMode === 'google' ? (
+              <>
+                <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800 text-slate-400 text-xs font-mono">
+                  <p>Secure Terminal Access Required.</p>
+                  <p className="mt-1">Please authenticate using your authorized Google workstation account.</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="group relative w-full overflow-hidden py-4 bg-white hover:bg-slate-100 text-slate-950 font-black rounded-xl shadow-lg shadow-white/5 text-xs uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-950/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
+                  <div className="relative flex items-center justify-center gap-3">
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        <span>Authorizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Chrome className="w-5 h-5" />
+                        <span>Initialize Google Session</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleCustomLogin} className="space-y-4 animate-fadeIn">
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Analyst Username"
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500/50 transition-colors"
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Security Password"
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500/50 transition-colors"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-black rounded-xl shadow-lg shadow-cyan-500/20 text-xs uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : 'Establish Analyst Link'}
+                </button>
+              </form>
+            )}
 
             {error && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-mono leading-relaxed">
