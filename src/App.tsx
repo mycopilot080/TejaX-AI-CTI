@@ -64,6 +64,9 @@ export default function App() {
     if (user) {
       setIsAuthenticated(true);
       setCurrentUserEmail(user.email || '');
+    } else {
+      setIsAuthenticated(false);
+      setCurrentUserEmail('');
     }
   }, [user]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');

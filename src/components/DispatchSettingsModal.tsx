@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DailyBriefingReport } from '../types/cti';
 import { Mail, Clock, Send, Sparkles, X, CheckCircle2, AlertTriangle, FileText, History, ExternalLink, LayoutTemplate } from 'lucide-react';
 import { DailyThreatReportTemplate } from './DailyThreatReportTemplate';
+import DOMPurify from 'dompurify';
 
 interface DispatchSettingsModalProps {
   isOpen: boolean;
@@ -264,7 +265,7 @@ export const DispatchSettingsModal: React.FC<DispatchSettingsModalProps> = ({ is
 
             {selectedPreview.htmlPreview ? (
               <div
-                dangerouslySetInnerHTML={{ __html: selectedPreview.htmlPreview }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedPreview.htmlPreview) }}
                 className="rounded-lg overflow-hidden border border-slate-800"
               />
             ) : (

@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { generateSecret, generateURI, verify } from 'otplib';
 
 dotenv.config();
 
@@ -342,6 +343,66 @@ Include:
 // Endpoint 6: Get Dispatch History Logs
 app.get('/api/dispatch-history', (req: Request, res: Response) => {
   return res.json({ success: true, history: dispatchHistoryLog });
+});
+
+// Endpoint 7: Secure MFA Token Dispatch Engine
+app.post('/api/mfa/send', async (req: Request, res: Response) => {
+  try {
+    const { phoneNumber, token, username } = req.body;
+    const targetNumber = phoneNumber || '+91 85532 43836';
+    
+    // In a production environment with a provisioned SMS Gateway (e.g. Twilio, AWS SNS):
+    // const smsResponse = await twilioClient.messages.create({
+    //   body: `[TejaX-MFA] Your secure analyst token is: ${token}. Access expires in 5m.`,
+    //   to: targetNumber,
+    //   from: process.env.TWILIO_PHONE_NUMBER
+    // });
+    
+    const timestamp = new Date().toISOString();
+    console.log(`[TejaX SECURITY] [${timestamp}] MFA DISPATCH: Sending token ${token} to authorized device ${targetNumber} for analyst ${username}`);
+
+    return res.json({
+      success: true,
+      message: `Token dispatched to ${targetNumber}`,
+      dispatchId: `MFA-${Date.now().toString().slice(-4)}`
+    });
+  } catch (error: any) {
+    console.error('MFA Dispatch Error:', error);
+    return res.status(500).json({ error: 'Failed to dispatch security token' });
+  }
+});
+
+// Endpoint 8: TOTP (Google Authenticator) Generation
+app.post('/api/mfa/totp/setup', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.body;
+    const userIdentifier = username || 'analyst_alpha';
+    const secret = generateSecret();
+    const otpauth = generateURI({ secret, label: userIdentifier, issuer: 'TejaX-Intelligence' });
+
+    return res.json({
+      success: true,
+      secret,
+      otpauth
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to generate TOTP setup' });
+  }
+});
+
+// Endpoint 9: TOTP (Google Authenticator) Verification
+app.post('/api/mfa/totp/verify', async (req: Request, res: Response) => {
+  try {
+    const { token, secret } = req.body;
+    const isValid = verify({ token, secret });
+
+    return res.json({
+      success: true,
+      isValid
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Verification failed' });
+  }
 });
 
 // Serve Vite dev server or static build

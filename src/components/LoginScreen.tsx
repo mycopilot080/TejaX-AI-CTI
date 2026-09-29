@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { ShieldAlert, ShieldCheck, RefreshCw, Chrome } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, ShieldCheck, RefreshCw, Globe, Key, QrCode, ArrowLeft } from 'lucide-react';
 import { useFirebase } from '../contexts/FirebaseContext';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface LoginScreenProps {
   onLogin: (email: string) => void;
@@ -14,8 +15,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   
   const [loginMode, setLoginMode] = useState<'google' | 'custom'>('google');
+  const [step, setStep] = useState<'credentials' | 'mfa' | 'mfa-setup'>('credentials');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  
+  // Simulated TOTP state
+  const [totpSecret, setTotpSecret] = useState<string>(localStorage.getItem('tejax_totp_secret') || '');
+  const [otpauthUri, setOtpauthUri] = useState<string>('');
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -35,26 +42,83 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       }
       
       setError(errorMsg);
-      setShowManual(true); // Suggest manual fallback on error
+      // Automatically show manual/custom fallback options if popup fails
+      setShowManual(true);
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/popup-blocked') {
+        setLoginMode('custom');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCustomLogin = (e: React.FormEvent) => {
+  const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    
-    // Implementation of requested credentials
-    if (username === 'SHARATH' && password === 'Secure@123') {
+    if (username && password) {
       setLoading(true);
-      setTimeout(() => {
-        onLogin('sharathsmart3@gmail.com');
+      setError(null);
+      
+      // Check if user needs TOTP setup
+      if (!totpSecret) {
+        try {
+          const res = await fetch('/api/mfa/totp/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setTotpSecret(data.secret);
+            setOtpauthUri(data.otpauth);
+            setStep('mfa-setup');
+          }
+        } catch (err) {
+          setError('Failed to initialize security setup.');
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setStep('mfa');
         setLoading(false);
-      }, 800);
+      }
     } else {
-      setError('Invalid Analyst Credentials. Access Denied.');
+      setError('Invalid Analyst Credentials.');
     }
+  };
+
+  const handleMFAVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/mfa/totp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: mfaCode, secret: totpSecret })
+      });
+      const data = await res.json();
+      
+      if (data.success && data.isValid) {
+        // Persist secret if it was a setup step
+        if (step === 'mfa-setup') {
+          localStorage.setItem('tejax_totp_secret', totpSecret);
+        }
+        onLogin(`${username.toLowerCase()}@tejax.ai`);
+      } else {
+        setError('Invalid Authenticator Code. Access Denied.');
+      }
+    } catch (err) {
+      setError('Verification service unavailable.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetMFASetup = () => {
+    localStorage.removeItem('tejax_totp_secret');
+    setTotpSecret('');
+    setStep('credentials');
   };
 
   const handleManualLogin = (e: React.FormEvent) => {
@@ -163,20 +227,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-950/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
                   <div className="relative flex items-center justify-center gap-3">
                     {loading ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                        <span>Authorizing...</span>
-                      </>
+                      <RefreshCw className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
-                        <Chrome className="w-5 h-5" />
+                        <Globe className="w-5 h-5" />
                         <span>Initialize Google Session</span>
                       </>
                     )}
                   </div>
                 </button>
               </>
-            ) : (
+            ) : step === 'credentials' ? (
               <form onSubmit={handleCustomLogin} className="space-y-4 animate-fadeIn">
                 <div className="space-y-3">
                   <input
@@ -204,11 +265,123 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   {loading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : 'Establish Analyst Link'}
                 </button>
               </form>
+            ) : step === 'mfa-setup' ? (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-left">
+                  <p className="text-cyan-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
+                    <QrCode className="w-4 h-4" />
+                    Authenticator Setup
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Scan this QR code with Google Authenticator or any TOTP app to secure your analyst account.
+                  </p>
+                </div>
+                
+                <div className="flex flex-col items-center gap-4 bg-white p-6 rounded-2xl shadow-xl">
+                  {otpauthUri && (
+                    <QRCodeSVG 
+                      value={otpauthUri} 
+                      size={180}
+                      level="H"
+                      includeMargin={false}
+                    />
+                  )}
+                  <div className="text-center">
+                    <p className="text-[9px] text-slate-500 uppercase font-bold tracking-widest mb-1">Manual Secret Key</p>
+                    <code className="text-xs font-mono text-slate-900 bg-slate-100 px-2 py-1 rounded select-all">
+                      {totpSecret}
+                    </code>
+                  </div>
+                </div>
+
+                <form onSubmit={handleMFAVerify} className="space-y-4">
+                  <input
+                    type="text"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit verification code"
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl tracking-[0.5em] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500/50"
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep('credentials')}
+                      className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-xl text-[10px] uppercase tracking-widest"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-[2] py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-black rounded-xl shadow-lg shadow-cyan-500/20 text-xs uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {loading ? <RefreshCw className="w-4 h-4 animate-spin mx-auto" /> : 'Complete Setup'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <form onSubmit={handleMFAVerify} className="space-y-6 animate-fadeIn">
+                <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-left">
+                  <p className="text-cyan-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
+                    <Key className="w-4 h-4" />
+                    TOTP Challenge Active
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Enter the 6-digit security code from your **Google Authenticator** app to authorize this terminal session.
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-4 text-3xl text-center tracking-[0.5em] text-cyan-400 font-mono focus:outline-none focus:border-cyan-500/50"
+                  required
+                />
+
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep('credentials')}
+                      className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <ArrowLeft className="w-3 h-3" />
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-[2] py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-black rounded-xl shadow-lg shadow-cyan-500/20 text-xs uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {loading ? <RefreshCw className="w-5 h-5 animate-spin mx-auto" /> : 'Verify & Establish Link'}
+                    </button>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={resetMFASetup}
+                    className="text-[9px] text-slate-600 hover:text-cyan-500 font-mono uppercase tracking-widest transition-colors"
+                  >
+                    Lost Access? Reset Security Setup
+                  </button>
+                </div>
+              </form>
             )}
 
             {error && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-mono leading-relaxed">
-                ⚠️ {error}
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-mono leading-relaxed text-left">
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 text-lg">⚠️</span>
+                  <div>
+                    <p className="font-bold uppercase tracking-wider mb-1">Authorization Fault Detected</p>
+                    <p>{error}</p>
+                    <p className="mt-2 text-slate-500 italic">Troubleshooting: Ensure popups are allowed or use the "Analyst ID" tab above for immediate manual access.</p>
+                  </div>
+                </div>
               </div>
             )}
 
