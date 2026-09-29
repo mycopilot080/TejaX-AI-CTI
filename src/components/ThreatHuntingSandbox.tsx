@@ -235,7 +235,7 @@ level: critical`,
         scannedIndex: activeInstance === 'dev' ? 'index=dev-winlogs OR index=dev-cloudlogs' : 'index=winlogs OR index=netlogs OR index=cloudlogs'
       });
       setIsExecuting(false);
-      setNoticeMessage(`Threat hunt successfully executed in Splunk ${activeInstance.toUpperCase()} sandbox! Found ${matched.length} historical matches.`);
+      setNoticeMessage(`Threat hunt successfully executed across ${activeInstance.toUpperCase()} log telemetry dataset! Found ${matched.length} historical matches.`);
       setTimeout(() => setNoticeMessage(null), 5000);
     }, 400);
   };
@@ -262,13 +262,13 @@ level: critical`,
           </div>
           <div>
             <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <span>Threat Hunting Sandbox (Sigma & KQL / SPL Engine)</span>
+              <span>Threat Hunting Sandbox (Sigma, KQL & SPL Query Engine)</span>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60">
                 Historical Hunting
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Execute advanced Sigma detection rules, KQL queries, and Splunk SPL searches against historical enterprise log telemetry.
+              Execute advanced Sigma detection rules, Microsoft Sentinel KQL queries, and SPL searches against enterprise log telemetry.
             </p>
           </div>
         </div>
@@ -284,7 +284,7 @@ level: critical`,
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              DEV Sandbox
+              DEV Telemetry
             </button>
             <button
               onClick={() => setActiveInstance('prod')}
@@ -294,7 +294,7 @@ level: critical`,
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              PROD Sandbox
+              PROD Telemetry
             </button>
           </div>
         </div>
@@ -484,7 +484,7 @@ level: critical`,
                         sourceIp: executionResult.matches[0]?.src_ip || '192.168.1.100',
                         mitreTechnique: 'T1003 - Threat Hunting Match',
                         detectionRuleId: `HUNT-${Math.floor(Math.random() * 9000) + 1000}`,
-                        description: `Promoted from Threat Hunting Sandbox (${queryLanguage}) in Splunk ${activeInstance.toUpperCase()}. Found ${executionResult.matches.length} matching events.`,
+                        description: `Promoted from Threat Hunting Sandbox (${queryLanguage}) across ${activeInstance.toUpperCase()} telemetry. Found ${executionResult.matches.length} matching events.`,
                         rawEventsCount: executionResult.matches.length,
                         analystNotes: [
                           {
@@ -509,13 +509,13 @@ level: critical`,
 
                   <button
                     onClick={() => {
-                      setNoticeMessage(`Successfully suggested hunting query as a Production Use Case in Splunk ${activeInstance.toUpperCase()} catalog!`);
+                      setNoticeMessage(`Successfully suggested hunting query as an Enterprise Production Detection Rule!`);
                       setTimeout(() => setNoticeMessage(null), 4500);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40 font-bold text-xs transition-all"
                   >
                     <Workflow className="w-3.5 h-3.5" />
-                    <span>Suggest as Use Case</span>
+                    <span>Suggest as Detection Rule</span>
                   </button>
 
                   <button

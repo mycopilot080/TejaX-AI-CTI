@@ -28,7 +28,7 @@ export interface ThreatWikiArticle {
   category: WikiCategory;
   severity: WikiSeverity;
   riskScore: number;
-  lastUpdated: string;
+  lastUpdated: any; // Can be ISO string (mock) or Firestore Timestamp/Date (real)
   author: string;
   version: string;
   aliases: string[];
@@ -45,6 +45,7 @@ export interface ThreatWikiArticle {
   mitigations: string[];
   references: { title: string; source: string; url?: string }[];
   relatedArticleIds: string[];
+  userId: string;
 }
 
 export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
@@ -100,7 +101,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
       { title: 'CISA Alert AA22-108A: DPRK State-Sponsored Cyber Actors', source: 'CISA / FBI / CSAF' },
       { title: 'Mandiant APT38 Threat Profile & Financial Crime Playbook', source: 'Mandiant / Google Cloud' }
     ],
-    relatedArticleIds: ['WIKI-MAL-001', 'WIKI-TTP-001', 'WIKI-CVE-001']
+    userId: "system", relatedArticleIds: ['WIKI-MAL-001', 'WIKI-TTP-001', 'WIKI-CVE-001']
   },
 
   {
@@ -155,7 +156,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
       { title: 'FBI & CISA Cybersecurity Advisory: Scattered Spider UNC3944', source: 'FBI / CISA' },
       { title: 'Microsoft Threat Intelligence: Octo Tempest Operator Profile', source: 'MSRC' }
     ],
-    relatedArticleIds: ['WIKI-TTP-004', 'WIKI-CVE-004', 'WIKI-MAL-003']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-004', 'WIKI-CVE-004', 'WIKI-MAL-003']
   },
 
   {
@@ -205,7 +206,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'CISA, NSA, FBI Joint Cybersecurity Advisory: PRC State-Sponsored Actor Volt Typhoon', source: 'CISA / NSA / FBI' }
     ],
-    relatedArticleIds: ['WIKI-CVE-003', 'WIKI-TTP-005', 'WIKI-TOOL-002']
+    userId: "system", relatedArticleIds: ['WIKI-CVE-003', 'WIKI-TTP-005', 'WIKI-TOOL-002']
   },
 
   {
@@ -253,7 +254,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'UK NCSC & US CISA: Russian GRU Military Intelligence Cyber Operations', source: 'NCSC / CISA' }
     ],
-    relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-002', 'WIKI-CVE-002']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-002', 'WIKI-CVE-002']
   },
 
   // 2. MALWARE FAMILIES & C2 FRAMEWORKS
@@ -304,7 +305,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'MITRE ATT&CK Software: Cobalt Strike S0154', source: 'MITRE ATT&CK' }
     ],
-    relatedArticleIds: ['WIKI-TTP-001', 'WIKI-ACT-001', 'WIKI-TOOL-001']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-001', 'WIKI-ACT-001', 'WIKI-TOOL-001']
   },
 
   {
@@ -354,7 +355,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'Gentilkiwi Mimikatz Repository & Documentation', source: 'GitHub' }
     ],
-    relatedArticleIds: ['WIKI-TTP-001', 'WIKI-ACT-004', 'WIKI-CVE-002']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-001', 'WIKI-ACT-004', 'WIKI-CVE-002']
   },
 
   {
@@ -401,7 +402,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'CISA Alert AA23-075A: Understanding Ransomware Threat Actors: LockBit 3.0', source: 'CISA / FBI / MS-ISAC' }
     ],
-    relatedArticleIds: ['WIKI-TTP-002', 'WIKI-ACT-002', 'WIKI-CVE-005']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-002', 'WIKI-ACT-002', 'WIKI-CVE-005']
   },
 
   // 3. MITRE ATT&CK TECHNIQUES
@@ -448,7 +449,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'MITRE ATT&CK: T1003.001 OS Credential Dumping', source: 'MITRE' }
     ],
-    relatedArticleIds: ['WIKI-MAL-002', 'WIKI-ACT-001', 'WIKI-ACT-004']
+    userId: "system", relatedArticleIds: ['WIKI-MAL-002', 'WIKI-ACT-001', 'WIKI-ACT-004']
   },
 
   {
@@ -491,7 +492,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'MITRE ATT&CK: T1490 Inhibit System Recovery', source: 'MITRE' }
     ],
-    relatedArticleIds: ['WIKI-MAL-003', 'WIKI-ACT-002']
+    userId: "system", relatedArticleIds: ['WIKI-MAL-003', 'WIKI-ACT-002']
   },
 
   // 4. VULNERABILITIES & ZERO-DAYS (CVES)
@@ -538,7 +539,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'CISA KEV Catalog: CVE-2026-3912 Spring Cloud Gateway', source: 'CISA' }
     ],
-    relatedArticleIds: ['WIKI-ACT-001', 'WIKI-TTP-003']
+    userId: "system", relatedArticleIds: ['WIKI-ACT-001', 'WIKI-TTP-003']
   },
 
   {
@@ -582,7 +583,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'Microsoft MSRC Security Advisory: CVE-2026-21840', source: 'Microsoft' }
     ],
-    relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-002', 'WIKI-ACT-004']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-002', 'WIKI-ACT-004']
   },
 
   {
@@ -628,7 +629,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'Cisco Security Advisory cisco-sa-asa-ftd-vpn-rce', source: 'Cisco PSIRT' }
     ],
-    relatedArticleIds: ['WIKI-ACT-003', 'WIKI-TTP-003']
+    userId: "system", relatedArticleIds: ['WIKI-ACT-003', 'WIKI-TTP-003']
   },
 
   // 5. SOC CONCEPTS, FRAMEWORKS & STANDARDS
@@ -664,7 +665,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'The Diamond Model of Intrusion Analysis (Caltagirone, Pendergast, Betz)', source: 'US DoD / DTIC' }
     ],
-    relatedArticleIds: ['WIKI-CON-002', 'WIKI-CON-003']
+    userId: "system", relatedArticleIds: ['WIKI-CON-002', 'WIKI-CON-003']
   },
 
   {
@@ -699,7 +700,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'FIRST Traffic Light Protocol (TLP) Definitions and Usage 2.0', source: 'FIRST.org' }
     ],
-    relatedArticleIds: ['WIKI-CON-001', 'WIKI-CON-003']
+    userId: "system", relatedArticleIds: ['WIKI-CON-001', 'WIKI-CON-003']
   },
 
   {
@@ -733,7 +734,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'OASIS STIX 2.1 Specification Standard', source: 'OASIS Open' }
     ],
-    relatedArticleIds: ['WIKI-CON-001', 'WIKI-CON-002']
+    userId: "system", relatedArticleIds: ['WIKI-CON-001', 'WIKI-CON-002']
   },
 
   // 6. TOOLS & DEFENSE TECHNOLOGIES
@@ -769,7 +770,7 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'SigmaHQ Official GitHub Repository', source: 'SigmaHQ' }
     ],
-    relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-001']
+    userId: "system", relatedArticleIds: ['WIKI-TTP-001', 'WIKI-MAL-001']
   },
 
   {
@@ -804,6 +805,6 @@ export const INITIAL_WIKI_ARTICLES: ThreatWikiArticle[] = [
     references: [
       { title: 'YARA Documentation and VirusTotal Integration', source: 'VirusTotal' }
     ],
-    relatedArticleIds: ['WIKI-MAL-001', 'WIKI-ACT-001']
+    userId: "system", relatedArticleIds: ['WIKI-MAL-001', 'WIKI-ACT-001']
   }
 ];

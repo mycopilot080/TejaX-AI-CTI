@@ -1,6 +1,6 @@
 {
   "name": "Tejax AI powered CYBER INTELLIGENCE",
-  "description": "Enterprise-grade Cyber Threat Intelligence (CTI), Detection Engineering, and Threat Hunting platform featuring an integrated Splunk Enterprise SIEM simulation and live threat feed collector.",
+  "description": "Enterprise-grade Cyber Threat Intelligence (CTI), Detection Engineering, and Threat Hunting platform featuring cross-platform detection rule generation (YARA, KQL, Splunk, CrowdStrike, ELK) and live threat feed collector.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -36,17 +36,6 @@ export const Navigation: React.FC<NavigationProps> = ({
       count: correlatedThreatsCount
     },
     {
-      id: 'siem-console' as ActiveTab,
-      label: 'Splunk SIEM',
-      icon: Search,
-    },
-    {
-      id: 'detection-catalog' as ActiveTab,
-      label: 'Detection Catalog',
-      icon: ShieldCheck,
-      badge: '18 Rules'
-    },
-    {
       id: 'incident-review' as ActiveTab,
       label: 'Incidents',
       icon: AlertCircle,

@@ -118,7 +118,7 @@ export interface DailyBriefingReport {
 export interface AIChatMessage {
   id: string;
   sender: 'user' | 'assistant' | 'system';
-  modelUsed?: 'gemini-3.8-flash' | 'gemini-3.1-pro-preview';
+  modelUsed?: 'gemini-3.8-flash' | 'gemini-3.1-pro-preview' | 'gemini-2.0-flash' | 'gemini-2.0-pro-exp-02-05';
   text: string;
   timestamp: string;
   codeBlocks?: { language: string; code: string; label: string }[];
@@ -267,6 +267,38 @@ export interface ThreatHuntRequest {
   iocSeeds?: string;
   status: 'QUEUED' | 'IN_PROGRESS' | 'DISPATCHED_TO_SANDBOX' | 'COMPLETED';
   requestedAt: string;
+}
+
+// Historical Threat Intelligence
+export interface HistoricalActor {
+  id: string;
+  name: string;
+  aliases: string[];
+  firstObserved: string;
+  lastObserved: string;
+  evolutionSummary: string;
+  pastCampaignIds: string[];
+  userId: string;
+}
+
+export interface HistoricalCampaign {
+  id: string;
+  title: string;
+  actorId: string;
+  startDate: string;
+  endDate?: string;
+  targetIndustries: string[];
+  ttpsUsed: string[];
+  outcome: string;
+  userId: string;
+}
+
+export interface HistoricalVulnerability {
+  cveId: string;
+  firstDisclosed: string;
+  exploitEvolution: string[];
+  patchAdoptionRate: number;
+  userId: string;
 }
 
 

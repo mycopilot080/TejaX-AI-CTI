@@ -16,20 +16,20 @@ import { AIAssistantDrawer } from './components/AIAssistantDrawer';
 import { DispatchSettingsModal } from './components/DispatchSettingsModal';
 import { ThreatHuntingSandbox } from './components/ThreatHuntingSandbox';
 import { OSINTIntelligenceView } from './components/OSINTIntelligenceView';
-import { KPIMetricsView } from './components/KPIMetricsView';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
 import { EnterprisePostureManagementView } from './components/EnterprisePostureManagementView';
 import { ThreatHeatmapView } from './components/ThreatHeatmapView';
 import { ThreatWikiView } from './components/ThreatWikiView';
+import { HistoricalIntelligenceView } from './components/HistoricalIntelligenceView';
 import { LoginScreen } from './components/LoginScreen';
-import { Search, ShieldAlert, Database, FileText } from 'lucide-react';
+import { Search, ShieldAlert, Database, FileText, RefreshCw } from 'lucide-react';
 
 import { INITIAL_FEEDS } from './data/mockFeeds';
 import { INITIAL_SIEM_LOGS } from './data/mockLogs';
 import { INITIAL_DETECTION_RULES } from './data/mockDetectionRules';
 import { INITIAL_ASSETS } from './data/mockAssets';
 import { INITIAL_CONTACTS } from './data/mockContacts';
-import { CTIAdvisory, SIEMLogEvent, DetectionRule, NotableIncident, Asset, Vulnerability } from './types/cti';
+import { CTIAdvisory, SIEMLogEvent, DetectionRule, NotableIncident, Asset, Vulnerability, ContactDetail } from './types/cti';
 import { 
   subscribeThreatFeeds, 
   saveThreatFeedAdvisory, 
@@ -50,12 +50,25 @@ import {
 
 
 
+import { useFirebase } from './contexts/FirebaseContext';
+
 export default function App() {
+  const { user, loading: authLoading } = useFirebase();
   const [activeTab, setActiveTab] = useState<ActiveTab>('executive-dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>('Sharath@Tejax.ai');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
+
+  useEffect(() => {
+    if (user) {
+      setIsAuthenticated(true);
+      setCurrentUserEmail(user.email || '');
+    } else {
+      setIsAuthenticated(false);
+      setCurrentUserEmail('');
+    }
+  }, [user]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   const [advisories, setAdvisories] = useState<CTIAdvisory[]>(INITIAL_FEEDS);
@@ -127,7 +140,7 @@ export default function App() {
   // Firestore Realtime Subscription & Auto-seeding Initial Data
   useEffect(() => {
     // Seed initial contacts & assets to Firestore
-    fetchAssetsOnce().then((dbAssets) => {
+    fetchAssetsOnce().then((dbAssets: Asset[]) => {
       if (!dbAssets || dbAssets.length === 0) {
         INITIAL_ASSETS.forEach((a) => saveAssetToFirestore(a));
       } else {
@@ -135,14 +148,14 @@ export default function App() {
       }
     });
 
-    fetchContactsOnce().then((dbContacts) => {
+    fetchContactsOnce().then((dbContacts: ContactDetail[]) => {
       if (!dbContacts || dbContacts.length === 0) {
         INITIAL_CONTACTS.forEach((c) => saveContactToFirestore(c));
       }
     });
 
     // Subscribe to Firestore Threat Feeds Collection
-    const unsubscribeFeeds = subscribeThreatFeeds((firestoreAdvisories) => {
+    const unsubscribeFeeds = subscribeThreatFeeds((firestoreAdvisories: CTIAdvisory[]) => {
       if (firestoreAdvisories && firestoreAdvisories.length > 0) {
         setAdvisories(firestoreAdvisories);
       } else {
@@ -152,7 +165,7 @@ export default function App() {
     });
 
     // Subscribe to Firestore Incident Tickets Collection
-    const unsubscribeTickets = subscribeIncidentTickets((firestoreTickets) => {
+    const unsubscribeTickets = subscribeIncidentTickets((firestoreTickets: NotableIncident[]) => {
       if (firestoreTickets && firestoreTickets.length > 0) {
         setIncidents(firestoreTickets);
       } else {
@@ -162,7 +175,7 @@ export default function App() {
     });
 
     // Subscribe to Firestore Detection Rules Collection
-    const unsubscribeRules = subscribeDetectionRules((firestoreRules) => {
+    const unsubscribeRules = subscribeDetectionRules((firestoreRules: DetectionRule[]) => {
       if (firestoreRules && firestoreRules.length > 0) {
         setDetectionRules(firestoreRules);
       } else {
@@ -389,14 +402,22 @@ export default function App() {
       case 'industry-threat-actors': return 'Industry-Wise Threat Actor Intelligence Matrix';
       case 'threat-hunting-sandbox': return 'Threat Hunting Sandbox (Sigma & KQL / SPL)';
       case 'osint-intelligence': return 'OSINT Intelligence Hub & Threat Report Correlation Engine';
-      case 'kpi-kri-sla': return 'SOC KPI, KRI & SLA Performance Governance (RAGB Color Coded)';
       case 'executive-dashboard': return 'Executive CISO & CTI Dashboard';
       case 'enterprise-posture': return 'Enterprise.com CTI Posture Management';
       case 'threat-heatmap': return 'Global Threat Heatmap & Attack Vector Intelligence';
       case 'threat-wiki': return 'Threat Wiki: Adversary & CTI Knowledgebase';
+      case 'historical-intelligence': return 'Historical Threat Intelligence Archives';
       default: return 'Tejax AI SOC & Cyber Threat Intelligence Platform';
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <RefreshCw className="w-10 h-10 text-cyan-500 animate-spin" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={(email) => { setIsAuthenticated(true); setCurrentUserEmail(email); }} />;
@@ -541,14 +562,12 @@ export default function App() {
             <OSINTIntelligenceView onRunSPLInConsole={(spl) => { setActiveTab('siem-console'); }} />
           )}
 
-          {activeTab === 'kpi-kri-sla' && (
-            <KPIMetricsView />
-          )}
-
           {activeTab === 'executive-dashboard' && (
             <ExecutiveDashboard
               incidents={incidents}
               assets={assets}
+              advisories={advisories}
+              detectionRules={detectionRules}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
               }}
@@ -573,6 +592,10 @@ export default function App() {
                 setActiveTab('threat-hunting-sandbox');
               }}
             />
+          )}
+
+          {activeTab === 'historical-intelligence' && (
+            <HistoricalIntelligenceView />
           )}
         </main>
       </div>

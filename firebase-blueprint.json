@@ -1,191 +1,139 @@
 {
   "entities": {
-    "ThreatFeedAdvisory": {
-      "title": "Threat Feed Advisory",
-      "description": "Represents a CTI advisory / threat feed item ingested from feeds like CISA KEV, CERT/CC, etc.",
+    "ThreatWikiArticle": {
+      "title": "Threat Wiki Article",
+      "description": "A comprehensive intelligence dossier on a threat actor, malware family, TTP, or vulnerability.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "source": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 512 },
-        "cveId": { "type": "string", "maxLength": 64 },
-        "cvssScore": { "type": "number" },
-        "threatActor": { "type": "string", "maxLength": 256 },
-        "malwareFamily": { "type": "string", "maxLength": 256 },
-        "targetSectors": { "type": "array" },
-        "summary": { "type": "string", "maxLength": 4096 },
-        "publishedAt": { "type": "string", "maxLength": 64 },
-        "rawPayload": { "type": "string", "maxLength": 8192 },
-        "mitreTtps": { "type": "array" },
-        "cyberKillChainStage": { "type": "string", "maxLength": 64 },
-        "recommendedMitigations": { "type": "array" }
+        "id": { "type": "string", "description": "Unique identifier for the article (e.g. WIKI-ACT-001)." },
+        "title": { "type": "string", "description": "The primary name or title of the threat entity.", "maxLength": 256 },
+        "category": { "type": "string", "enum": ["actor", "malware", "ttp", "cve", "framework", "tool"] },
+        "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "INFORMATIONAL"] },
+        "riskScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "author": { "type": "string", "description": "The person or group who authored the intelligence.", "maxLength": 128 },
+        "version": { "type": "string", "description": "Dossier version string.", "maxLength": 16 },
+        "aliases": { "type": "array", "items": { "type": "string" }, "description": "Common names or synonyms for the threat." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Descriptive tags for indexing and search." },
+        "origin": { "type": "string", "description": "The geographic or organizational origin.", "maxLength": 256 },
+        "motivation": { "type": "string", "description": "The primary drivers behind the threat activity.", "maxLength": 512 },
+        "targetSectors": { "type": "array", "items": { "type": "string" }, "description": "Business sectors targeted by the threat." },
+        "summary": { "type": "string", "description": "Executive summary of the threat.", "maxLength": 2048 },
+        "technicalDetails": { "type": "array", "items": { "type": "string" }, "description": "Bullet points detailing technical tradecraft." },
+        "killChainStage": { "type": "string", "enum": ["Reconnaissance", "Weaponization", "Delivery", "Exploitation", "Installation", "Command and Control", "Actions on Objectives"] },
+        "mitreTechniques": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "tactic": { "type": "string" },
+              "subTechnique": { "type": "string" }
+            }
+          }
+        },
+        "iocs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["IP", "DOMAIN", "HASH_SHA256", "URL", "FILE_PATH", "MUTEX"] },
+              "value": { "type": "string" },
+              "description": { "type": "string" },
+              "confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "EMERGING"] }
+            }
+          }
+        },
+        "detectionQueries": {
+          "type": "object",
+          "properties": {
+            "spl": { "type": "string" },
+            "sigma": { "type": "string" },
+            "kql": { "type": "string" },
+            "yara": { "type": "string" }
+          }
+        },
+        "mitigations": { "type": "array", "items": { "type": "string" }, "description": "Defensive recommendations and controls." },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "source": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        },
+        "relatedArticleIds": { "type": "array", "items": { "type": "string" } },
+        "userId": { "type": "string", "description": "The UID of the user who created/owns this record." }
       },
-      "required": ["id", "source", "title", "cveId", "cvssScore", "summary", "publishedAt"]
+      "required": ["id", "title", "category", "severity", "riskScore", "lastUpdated", "author", "userId"]
     },
-    "Asset": {
-      "title": "Asset Inventory Item",
-      "description": "Represents an enterprise asset in the vulnerability management matrix",
+    "HistoricalActor": {
+      "title": "Historical Threat Actor",
+      "description": "Historical record of a threat actor's evolution and past behaviors.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "hostname": { "type": "string", "maxLength": 128 },
-        "ipAddress": { "type": "string", "maxLength": 64 },
-        "os": { "type": "string", "maxLength": 128 },
-        "environment": { "type": "string", "maxLength": 64 },
-        "tier": { "type": "string", "maxLength": 64 },
-        "businessOwner": { "type": "string", "maxLength": 128 },
-        "contactEmail": { "type": "string", "maxLength": 128 },
-        "contactPhone": { "type": "string", "maxLength": 64 },
-        "contactRole": { "type": "string", "maxLength": 128 },
-        "installedSoftware": { "type": "array" },
-        "lastScanTimestamp": { "type": "string", "maxLength": 64 },
-        "vulnerabilities": { "type": "array" }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "firstObserved": { "type": "string", "format": "date-time" },
+        "lastObserved": { "type": "string", "format": "date-time" },
+        "evolutionSummary": { "type": "string" },
+        "pastCampaignIds": { "type": "array", "items": { "type": "string" } },
+        "userId": { "type": "string" }
       },
-      "required": ["id", "hostname", "ipAddress", "environment", "tier"]
+      "required": ["id", "name", "userId"]
     },
-    "ContactDetail": {
-      "title": "Contact Detail",
-      "description": "Represents escalation contacts and team personnel for security response",
+    "HistoricalCampaign": {
+      "title": "Historical Threat Campaign",
+      "description": "Record of a past cyber intelligence campaign or operation.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "name": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 128 },
-        "department": { "type": "string", "maxLength": 128 },
-        "email": { "type": "string", "maxLength": 128 },
-        "phone": { "type": "string", "maxLength": 64 },
-        "pagerDutyEscalation": { "type": "string", "maxLength": 128 },
-        "shiftCoverage": { "type": "string", "maxLength": 64 },
-        "assignedAssets": { "type": "array" },
-        "status": { "type": "string", "maxLength": 64 },
-        "notes": { "type": "string", "maxLength": 1024 }
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "actorId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "targetIndustries": { "type": "array", "items": { "type": "string" } },
+        "ttpsUsed": { "type": "array", "items": { "type": "string" } },
+        "outcome": { "type": "string" },
+        "userId": { "type": "string" }
       },
-      "required": ["id", "name", "email", "shiftCoverage"]
+      "required": ["id", "title", "actorId", "userId"]
     },
-    "IncidentTicket": {
-      "title": "SOC Incident Ticket",
-      "description": "Represents an enterprise notable security incident ticket with SLA tracking, analyst notes, and SOAR execution history",
+    "HistoricalVulnerability": {
+      "title": "Historical Vulnerability Data",
+      "description": "Historical context for vulnerabilities, including exploit evolution over time.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 512 },
-        "severity": { "type": "string", "maxLength": 32, "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
-        "riskScore": { "type": "number" },
-        "status": { "type": "string", "maxLength": 32, "enum": ["NEW", "IN_PROGRESS", "MITIGATED", "FALSE_POSITIVE", "CLOSED"] },
-        "slaTargetMinutes": { "type": "number" },
-        "slaStartTime": { "type": "string", "maxLength": 64 },
-        "assignedAnalyst": { "type": "string", "maxLength": 128 },
-        "affectedHost": { "type": "string", "maxLength": 128 },
-        "affectedUser": { "type": "string", "maxLength": 128 },
-        "sourceIp": { "type": "string", "maxLength": 64 },
-        "mitreTechnique": { "type": "string", "maxLength": 256 },
-        "detectionRuleId": { "type": "string", "maxLength": 64 },
-        "description": { "type": "string", "maxLength": 4096 },
-        "rawEventsCount": { "type": "number" },
-        "analystNotes": { "type": "array" },
-        "aiHypothesis": { "type": "string", "maxLength": 4096 }
+        "cveId": { "type": "string" },
+        "firstDisclosed": { "type": "string", "format": "date-time" },
+        "exploitEvolution": { "type": "array", "items": { "type": "string" } },
+        "patchAdoptionRate": { "type": "number" },
+        "userId": { "type": "string" }
       },
-      "required": ["id", "title", "severity", "riskScore", "status", "slaTargetMinutes", "slaStartTime", "assignedAnalyst", "affectedHost"]
-    },
-    "ThreatReport": {
-      "title": "Threat Intelligence Report",
-      "description": "Represents a synthesized CTI report (24-hour summary, automated dispatch, or on-demand deep-dive)",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 512 },
-        "cveId": { "type": "string", "maxLength": 64 },
-        "severity": { "type": "string", "maxLength": 32 },
-        "cvssScore": { "type": "number" },
-        "threatActor": { "type": "string", "maxLength": 256 },
-        "timeWindow": { "type": "string", "maxLength": 64 },
-        "publishedAt": { "type": "string", "maxLength": 64 },
-        "mitreTtp": { "type": "string", "maxLength": 256 },
-        "killChainStage": { "type": "string", "maxLength": 128 },
-        "executiveSummary": { "type": "string", "maxLength": 8192 },
-        "technicalSummary": { "type": "string", "maxLength": 8192 },
-        "assignedAnalyst": { "type": "string", "maxLength": 128 },
-        "reportType": { "type": "string", "maxLength": 64 },
-        "tlp": { "type": "string", "maxLength": 32 },
-        "iocs": { "type": "object" },
-        "recommendations": { "type": "array" },
-        "references": { "type": "array" }
-      },
-      "required": ["id", "title", "severity", "publishedAt", "executiveSummary"]
-    },
-    "ThreatHuntRequest": {
-      "title": "Threat Hunt Mission Request",
-      "description": "Represents a threat hunting mission ticket dispatched against a specific adversary",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "actorId": { "type": "string", "maxLength": 128 },
-        "actorName": { "type": "string", "maxLength": 256 },
-        "targetIndustry": { "type": "string", "maxLength": 128 },
-        "riskScore": { "type": "number" },
-        "hypothesis": { "type": "string", "maxLength": 4096 },
-        "selectedTTPs": { "type": "array" },
-        "dataSources": { "type": "array" },
-        "timeWindow": { "type": "string", "maxLength": 64 },
-        "priority": { "type": "string", "maxLength": 64 },
-        "assignedHunter": { "type": "string", "maxLength": 128 },
-        "scopeNotes": { "type": "string", "maxLength": 2048 },
-        "iocSeeds": { "type": "string", "maxLength": 1024 },
-        "status": { "type": "string", "maxLength": 64 },
-        "requestedAt": { "type": "string", "maxLength": 64 }
-      },
-      "required": ["id", "actorName", "hypothesis", "priority", "assignedHunter", "status", "requestedAt"]
-    },
-    "DetectionRule": {
-      "title": "Detection Rule",
-      "description": "Represents a security detection rule for platforms like Splunk, KQL, Sigma, etc.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "name": { "type": "string", "maxLength": 512 },
-        "category": { "type": "string", "maxLength": 128 },
-        "severity": { "type": "string", "maxLength": 32 },
-        "riskScore": { "type": "number" },
-        "description": { "type": "string", "maxLength": 4096 },
-        "mitreTechniques": { "type": "array" },
-        "enabled": { "type": "boolean" },
-        "splQuery": { "type": "string", "maxLength": 8192 },
-        "sigmaRule": { "type": "string", "maxLength": 8192 },
-        "kqlQuery": { "type": "string", "maxLength": 8192 },
-        "cqlQuery": { "type": "string", "maxLength": 8192 },
-        "triggerCount": { "type": "number" }
-      },
-      "required": ["id", "name", "category", "severity", "splQuery"]
+      "required": ["cveId", "userId"]
     }
   },
   "firestore": {
-    "/threat_feeds/{advisoryId}": {
-      "schema": { "$ref": "#/entities/ThreatFeedAdvisory" },
-      "description": "Collection storing all ingested CTI threat feeds and advisories"
+    "/threat_wiki/{articleId}": {
+      "schema": "ThreatWikiArticle",
+      "description": "Collection of intelligence dossiers for the Threat Wiki."
     },
-    "/assets/{assetId}": {
-      "schema": { "$ref": "#/entities/Asset" },
-      "description": "Collection storing enterprise asset inventory items"
+    "/historical_actors/{actorId}": {
+      "schema": "HistoricalActor",
+      "description": "Archive of threat actor evolution."
     },
-    "/contacts/{contactId}": {
-      "schema": { "$ref": "#/entities/ContactDetail" },
-      "description": "Collection storing contact details and escalation personnel"
+    "/historical_campaigns/{campaignId}": {
+      "schema": "HistoricalCampaign",
+      "description": "Archive of past threat campaigns."
     },
-    "/incident_tickets/{ticketId}": {
-      "schema": { "$ref": "#/entities/IncidentTicket" },
-      "description": "Collection storing all active and historical SOC notable incident tickets"
-    },
-    "/threat_reports/{reportId}": {
-      "schema": { "$ref": "#/entities/ThreatReport" },
-      "description": "Collection storing 24-hour summary reports, on-demand syntheses, and executive briefings"
-    },
-    "/hunt_requests/{requestId}": {
-      "schema": { "$ref": "#/entities/ThreatHuntRequest" },
-      "description": "Collection storing proactive threat hunt mission tickets"
-    },
-    "/detection_rules/{ruleId}": {
-      "schema": { "$ref": "#/entities/DetectionRule" },
-      "description": "Collection storing security detection rules and logic"
+    "/historical_vulnerabilities/{cveId}": {
+      "schema": "HistoricalVulnerability",
+      "description": "Historical exploit and patch data for CVEs."
     }
   }
 }

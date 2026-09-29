@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Globe,
   Flame,
@@ -99,10 +99,39 @@ export const ThreatHeatmapView: React.FC = () => {
     }
   ];
 
+  // Compute dynamic metrics based on selected stage
+  const currentMetrics = useMemo(() => {
+    const activeTechniques = selectedKillChainStage === 'ALL' 
+      ? killChainMatrix.flatMap(s => s.techniques)
+      : killChainMatrix.find(s => s.stage === selectedKillChainStage)?.techniques || [];
+    
+    const totalDetections = activeTechniques.reduce((sum, t) => sum + t.detections, 0);
+    const criticalTechs = activeTechniques.filter(t => t.risk === 'CRITICAL');
+    const peakActor = activeTechniques.sort((a, b) => b.detections - a.detections)[0]?.actor || 'N/A';
+    
+    return {
+      techCount: activeTechniques.length,
+      totalDetections,
+      criticalCount: criticalTechs.length,
+      peakActor,
+      topTech: activeTechniques.sort((a, b) => b.detections - a.detections)[0]
+    };
+  }, [selectedKillChainStage]);
+
   const filteredStages = killChainMatrix.filter(stage => {
     if (selectedKillChainStage !== 'ALL' && stage.stage !== selectedKillChainStage) return false;
     return true;
   });
+
+  const handleStageClick = (stageName: string) => {
+    setSelectedKillChainStage(prev => prev === stageName ? 'ALL' : stageName);
+    setSelectedTechnique(null);
+  };
+
+  const selectedTechniqueData = useMemo(() => {
+    if (!selectedTechnique) return null;
+    return killChainMatrix.flatMap(s => s.techniques).find(t => t.id === selectedTechnique);
+  }, [selectedTechnique]);
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 min-h-[calc(100vh-100px)] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -130,7 +159,10 @@ export const ThreatHeatmapView: React.FC = () => {
         <div className="flex items-center gap-2">
           <select
             value={selectedKillChainStage}
-            onChange={(e) => setSelectedKillChainStage(e.target.value)}
+            onChange={(e) => {
+              setSelectedKillChainStage(e.target.value);
+              setSelectedTechnique(null);
+            }}
             className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 font-mono outline-none focus:border-cyan-500"
           >
             <option value="ALL">All Kill Chain Stages</option>
@@ -151,42 +183,42 @@ export const ThreatHeatmapView: React.FC = () => {
         </div>
       )}
 
-      {/* Summary Metrics */}
+      {/* Dynamic Summary Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Mapped MITRE Techniques</div>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 transition-all">
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Active Techniques ({selectedKillChainStage})</div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-cyan-400 font-mono">15 Techniques</span>
-            <span className="text-xs font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-900">7 Tactics</span>
+            <span className="text-2xl font-black text-cyan-400 font-mono">{currentMetrics.techCount} TTPs</span>
+            <span className="text-xs font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-900">Mapped</span>
           </div>
           <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-cyan-400 h-full w-[85%]" />
+            <div className="bg-cyan-400 h-full" style={{ width: `${(currentMetrics.techCount / 15) * 100}%` }} />
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Critical Execution Risk</div>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 transition-all">
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Risk Concentration</div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-rose-400 font-mono">T1059 (Execution)</span>
-            <span className="text-xs font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-900">520 Hits</span>
+            <span className="text-2xl font-black text-rose-400 font-mono">{currentMetrics.topTech?.id || 'N/A'}</span>
+            <span className="text-xs font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-900">{currentMetrics.topTech?.detections || 0} Hits</span>
           </div>
           <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-rose-500 h-full w-[92%]" />
+            <div className="bg-rose-500 h-full" style={{ width: `${(currentMetrics.totalDetections / 2000) * 100}%` }} />
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
-          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Active Kill Chain Stage</div>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 transition-all">
+          <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Top Threat Actor</div>
           <div className="flex items-baseline justify-between">
-            <span className="text-xl font-black text-amber-400 font-mono">Delivery & Exploitation</span>
-            <span className="text-xs font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-900">Peak Activity</span>
+            <span className="text-xl font-black text-amber-400 font-mono truncate max-w-[180px]">{currentMetrics.peakActor}</span>
+            <span className="text-xs font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-900">Peak Active</span>
           </div>
           <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
             <div className="bg-amber-400 h-full w-[70%]" />
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow space-y-2 transition-all">
           <div className="text-[11px] font-mono text-slate-400 uppercase font-bold">Detection Coverage</div>
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-black text-emerald-400 font-mono">94.2%</span>
@@ -198,6 +230,107 @@ export const ThreatHeatmapView: React.FC = () => {
         </div>
       </div>
 
+      {/* Technique Intelligence Dashboard (Appears when a technique is clicked) */}
+      {selectedTechniqueData && (
+        <div className="bg-slate-900 border-2 border-cyan-500/40 rounded-2xl overflow-hidden shadow-2xl animate-in slide-in-from-top-4 duration-300">
+          <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-cyan-500/20 rounded-lg">
+                <Terminal className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <span className="text-cyan-400">{selectedTechniqueData.id}</span>
+                  <span>—</span>
+                  <span>{selectedTechniqueData.name}</span>
+                </h3>
+                <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mt-0.5">Technique Intelligence Drill-Down</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setSelectedTechnique(null)}
+              className="text-slate-500 hover:text-white transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase">Detection Analytics</label>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">24h Hit Count</span>
+                    <span className="text-white font-mono font-bold">{selectedTechniqueData.detections}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">Primary Actor</span>
+                    <span className="text-amber-400 font-mono font-bold">{selectedTechniqueData.actor}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">Risk Severity</span>
+                    <span className={`font-mono font-bold ${
+                      selectedTechniqueData.risk === 'CRITICAL' ? 'text-rose-400' : 
+                      selectedTechniqueData.risk === 'HIGH' ? 'text-amber-400' : 'text-blue-400'
+                    }`}>{selectedTechniqueData.risk}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-cyan-400">
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Detection Coverage</span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Active monitoring via **CrowdStrike EDR**, **Splunk SIEM**, and **Palo Alto Cortex**. 12 custom Sigma rules deployed to correlate this TTP.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase">Targeted Enterprise Assets</label>
+                <div className="mt-2 space-y-2">
+                  {[
+                    { asset: 'api.enterprise.com', status: 'Blocked', time: '12m ago' },
+                    { asset: 'git.enterprise.com', status: 'Alerted', time: '1h ago' },
+                    { asset: 'auth.enterprise.com', status: 'Blocked', time: '3h ago' }
+                  ].map((a, i) => (
+                    <div key={i} className="flex items-center justify-between p-2 bg-slate-950/50 rounded-lg border border-slate-800/50 text-[11px]">
+                      <span className="text-slate-300 font-mono">{a.asset}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={a.status === 'Blocked' ? 'text-emerald-400' : 'text-amber-400'}>{a.status}</span>
+                        <span className="text-slate-500 font-mono text-[9px]">{a.time}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase">Automated Playbooks</label>
+                <div className="mt-2 space-y-2">
+                  <div className="p-3 bg-cyan-950/20 border border-cyan-800/50 rounded-xl">
+                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>EDR Containment Alpha</span>
+                    </div>
+                    <p className="text-[10px] text-cyan-400/80 mt-1">Status: **ACTIVE**. Automatically isolates endpoint upon 3+ detections in 60 seconds.</p>
+                  </div>
+                  <button className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold transition-all border border-slate-700">
+                    Dispatch SOAR Remediation
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cyber Kill Chain & MITRE Heatmap Matrix Grid */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -207,79 +340,69 @@ export const ThreatHeatmapView: React.FC = () => {
           <span className="text-xs font-mono text-cyan-400">Showing {filteredStages.length} Kill Chain Stages</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          {killChainMatrix.map((stageObj, idx) => (
-            <div
-              key={idx}
-              className={`border rounded-xl p-4 flex flex-col justify-between space-y-3 bg-slate-900 ${stageObj.color}`}
-            >
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono font-bold text-slate-400">STAGE {idx + 1}</span>
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${stageObj.badgeColor}`}>
-                    {stageObj.stage}
-                  </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3 overflow-x-auto pb-4">
+          {filteredStages.map((stageObj, idx) => {
+            const originalIndex = killChainMatrix.findIndex(s => s.stage === stageObj.stage);
+            return (
+              <div
+                key={idx}
+                className={`border rounded-xl p-4 flex flex-col justify-between space-y-3 bg-slate-900 transition-all duration-300 ${
+                  selectedKillChainStage === stageObj.stage ? 'ring-2 ring-cyan-500/50' : ''
+                } ${stageObj.color}`}
+              >
+                <div className="space-y-1.5">
+                  <div 
+                    onClick={() => handleStageClick(stageObj.stage)}
+                    className="flex items-center justify-between cursor-pointer hover:opacity-80"
+                  >
+                    <span className="text-[10px] font-mono font-bold text-slate-400">STAGE {originalIndex + 1}</span>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${stageObj.badgeColor}`}>
+                      {stageObj.stage}
+                    </span>
+                  </div>
+                  <div className="text-xs font-extrabold text-white">{stageObj.stage}</div>
+                  <div className="text-[10px] font-mono text-cyan-300 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                    {stageObj.mitreTactic}
+                  </div>
                 </div>
-                <div className="text-xs font-extrabold text-white">{stageObj.stage}</div>
-                <div className="text-[10px] font-mono text-cyan-300 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                  {stageObj.mitreTactic}
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">Techniques & TTPs:</div>
                 <div className="space-y-2">
-                  {stageObj.techniques.map((tech, tIdx) => (
-                    <div
-                      key={tIdx}
-                      onClick={() => setSelectedTechnique(tech.id)}
-                      className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
-                        selectedTechnique === tech.id
-                          ? 'bg-cyan-500/20 border-cyan-500 text-white'
-                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-mono font-bold text-cyan-400">{tech.id}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                          tech.risk === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-900' :
-                          tech.risk === 'HIGH' ? 'bg-amber-950 text-amber-300 border border-amber-900' :
-                          'bg-blue-950 text-blue-300 border border-blue-800'
-                        }`}>
-                          {tech.risk}
-                        </span>
+                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">Techniques & TTPs:</div>
+                  <div className="space-y-2">
+                    {stageObj.techniques.map((tech, tIdx) => (
+                      <div
+                        key={tIdx}
+                        onClick={() => setSelectedTechnique(prev => prev === tech.id ? null : tech.id)}
+                        className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
+                          selectedTechnique === tech.id
+                            ? 'bg-cyan-500/30 border-cyan-400 text-white shadow-lg shadow-cyan-500/20'
+                            : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-mono font-bold text-cyan-400">{tech.id}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                            tech.risk === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-900' :
+                            tech.risk === 'HIGH' ? 'bg-amber-950 text-amber-300 border border-amber-900' :
+                            'bg-blue-950 text-blue-300 border border-blue-800'
+                          }`}>
+                            {tech.risk}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-bold text-white mt-1 leading-snug">{tech.name}</div>
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2 pt-2 border-t border-slate-900">
+                          <span>{tech.detections} hits</span>
+                          <span className="text-amber-400 font-bold">{tech.actor}</span>
+                        </div>
                       </div>
-                      <div className="text-[11px] font-bold text-white mt-1 leading-snug">{tech.name}</div>
-                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2 pt-2 border-t border-slate-900">
-                        <span>{tech.detections} hits</span>
-                        <span className="text-amber-400 font-bold">{tech.actor}</span>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
-
-      {selectedTechnique && (
-        <div className="bg-slate-900 border border-cyan-500/50 rounded-xl p-4 flex items-center justify-between shadow-xl font-mono text-xs">
-          <div className="flex items-center gap-3">
-            <Terminal className="w-5 h-5 text-cyan-400" />
-            <div>
-              <span className="text-white font-bold">Selected Technique: {selectedTechnique}</span>
-              <p className="text-slate-400 text-[11px] mt-0.5">Sigma detection rules and automated EDR containment playbooks are active for this TTP.</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setSelectedTechnique(null)}
-            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
-          >
-            Clear Selection
-          </button>
-        </div>
-      )}
     </div>
   );
 };

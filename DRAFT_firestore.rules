@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity validation helpers
+    function isValidThreatWikiArticle(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'severity', 'riskScore', 'lastUpdated', 'author', 'userId'])
+        && data.keys().hasOnly([
+          'id', 'title', 'category', 'severity', 'riskScore', 'lastUpdated', 'author', 'version', 
+          'aliases', 'tags', 'origin', 'motivation', 'targetSectors', 'summary', 'technicalDetails', 
+          'killChainStage', 'mitreTechniques', 'iocs', 'detectionQueries', 'mitigations', 
+          'references', 'relatedArticleIds', 'userId'
+        ])
+        && data.id is string && data.id.size() <= 64
+        && data.title is string && data.title.size() <= 256
+        && data.category in ['actor', 'malware', 'ttp', 'cve', 'framework', 'tool']
+        && data.severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'INFORMATIONAL']
+        && data.riskScore is int && data.riskScore >= 0 && data.riskScore <= 100
+        && data.lastUpdated is timestamp
+        && data.author is string && data.author.size() <= 128
+        && data.userId == request.auth.uid
+        && (data.summary == null || (data.summary is string && data.summary.size() <= 2048))
+        && (data.origin == null || (data.origin is string && data.origin.size() <= 256))
+        && (data.motivation == null || (data.motivation is string && data.motivation.size() <= 512));
+    }
+
+    match /threat_wiki/{articleId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+        && isValidId(articleId) 
+        && isValidThreatWikiArticle(incoming())
+        && incoming().userId == request.auth.uid;
+        
+      allow update: if isSignedIn() 
+        && isValidId(articleId) 
+        && isValidThreatWikiArticle(incoming())
+        && isOwner(existing().userId)
+        && incoming().userId == existing().userId;
+        
+      allow delete: if isSignedIn() 
+        && isOwner(existing().userId);
+    }
+  }
+}

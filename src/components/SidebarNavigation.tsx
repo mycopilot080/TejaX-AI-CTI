@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Activity,
+  History,
   Search,
   ShieldCheck,
   AlertCircle,
@@ -22,7 +23,6 @@ import {
   Terminal,
   User,
   LogOut,
-  Award,
   Flame,
   BookOpen
 } from 'lucide-react';
@@ -42,11 +42,25 @@ export type ActiveTab =
   | 'industry-threat-actors'
   | 'threat-hunting-sandbox'
   | 'osint-intelligence'
-  | 'kpi-kri-sla'
   | 'executive-dashboard'
   | 'enterprise-posture'
   | 'threat-heatmap'
-  | 'threat-wiki';
+  | 'threat-wiki'
+  | 'historical-intelligence';
+
+interface NavItem {
+  id: ActiveTab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+  count?: number;
+}
+
+interface NavGroup {
+  groupName: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavItem[];
+}
 
 interface SidebarNavigationProps {
   activeTab: ActiveTab;
@@ -82,8 +96,8 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
   const [utcTime, setUtcTime] = useState<string>('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     'EXECUTIVE OVERVIEW': true,
-    'THREAT INTEL & ASSETS': true,
-    'SIEM & DETECTION': true,
+    'OSINT INTEGRATION': true,
+    'DETECTION HUB': true,
     'THREAT ANALYTICS': true
   });
   const [activeFlyoutGroup, setActiveFlyoutGroup] = useState<string | null>(null);
@@ -99,90 +113,7 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const navGroups = [
-    {
-      groupName: 'EXECUTIVE OVERVIEW',
-      icon: ShieldCheck,
-      items: [
-        {
-          id: 'executive-dashboard' as ActiveTab,
-          label: 'Executive CISO Dashboard',
-          icon: ShieldCheck,
-          badge: 'CISO'
-        },
-        {
-          id: 'enterprise-posture' as ActiveTab,
-          label: 'CTI Posture',
-          icon: Globe,
-          badge: 'POSTURE'
-        },
-        {
-          id: 'threat-heatmap' as ActiveTab,
-          label: 'Global Threat Heatmap',
-          icon: Flame,
-          badge: 'LIVE'
-        },
-        {
-          id: 'vulnerability-management' as ActiveTab,
-          label: 'Asset CTI Matrix',
-          icon: ShieldAlert,
-          count: correlatedThreatsCount
-        }
-      ]
-    },
-    {
-      groupName: 'OSINT INTEGRATION',
-      icon: Globe,
-      items: [
-        {
-          id: 'osint-intelligence' as ActiveTab,
-          label: 'OSINT Intelligence Hub',
-          icon: Globe,
-          badge: 'API'
-        },
-        {
-          id: 'cti-feed' as ActiveTab,
-          label: 'Live CTI Feed Collector',
-          icon: Activity,
-          badge: 'LIVE'
-        }
-      ]
-    },
-    {
-      groupName: 'DETECTION HUB',
-      icon: Search,
-      items: [
-        {
-          id: 'siem-console' as ActiveTab,
-          label: 'Splunk SIEM',
-          icon: Search
-        },
-        {
-          id: 'detection-catalog' as ActiveTab,
-          label: 'Intelligence Forge',
-          icon: Sparkles,
-          badge: 'AI'
-        },
-        {
-          id: 'detection-library' as ActiveTab,
-          label: 'Rule Library',
-          icon: ShieldCheck,
-          badge: `${detectionRulesCount} Rules`
-        },
-        {
-          id: 'incident-review' as ActiveTab,
-          label: 'Incidents',
-          icon: AlertCircle,
-          count: incidentsBadgeCount
-        },
-        {
-          id: 'threat-hunting-sandbox' as ActiveTab,
-          label: 'Threat Hunting Sandbox',
-          icon: Terminal,
-          badge: 'SIGMA'
-        }
-      ]
-    },
+  const navGroups: NavGroup[] = [
     {
       groupName: 'THREAT ANALYTICS',
       icon: BarChart3,
@@ -216,10 +147,82 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
           badge: 'WIKI'
         },
         {
-          id: 'kpi-kri-sla' as ActiveTab,
-          label: 'KPI, KRI & SLA Metrics',
-          icon: Award,
-          badge: 'RAGB'
+          id: 'historical-intelligence' as ActiveTab,
+          label: 'Historical Archives',
+          icon: History,
+          badge: 'DB'
+        }
+      ]
+    },
+    {
+      groupName: 'OSINT INTEGRATION',
+      icon: Globe,
+      items: [
+        {
+          id: 'osint-intelligence' as ActiveTab,
+          label: 'OSINT Intelligence Hub',
+          icon: Globe,
+          badge: 'API'
+        },
+        {
+          id: 'cti-feed' as ActiveTab,
+          label: 'Live CTI Feed Collector',
+          icon: Activity,
+          badge: 'LIVE'
+        }
+      ]
+    },
+    {
+      groupName: 'EXECUTIVE OVERVIEW',
+      icon: ShieldCheck,
+      items: [
+        {
+          id: 'executive-dashboard' as ActiveTab,
+          label: 'Executive CISO Dashboard',
+          icon: ShieldCheck,
+          badge: 'CISO'
+        },
+        {
+          id: 'enterprise-posture' as ActiveTab,
+          label: 'CTI Posture',
+          icon: Globe,
+          badge: 'POSTURE'
+        },
+        {
+          id: 'threat-heatmap' as ActiveTab,
+          label: 'Global Threat Heatmap',
+          icon: Flame,
+          badge: 'LIVE'
+        },
+        {
+          id: 'vulnerability-management' as ActiveTab,
+          label: 'Asset CTI Matrix',
+          icon: ShieldAlert,
+          count: correlatedThreatsCount
+        }
+      ]
+    },
+    {
+      groupName: 'DETECTION HUB',
+      icon: Layers,
+      items: [
+        {
+          id: 'detection-library' as ActiveTab,
+          label: 'Rule Library',
+          icon: ShieldCheck,
+          badge: `${detectionRulesCount} Rules`
+        },
+        {
+          id: 'incident-review' as ActiveTab,
+          label: 'Incidents',
+          icon: AlertCircle,
+          count: incidentsBadgeCount
+        },
+        {
+          id: 'threat-hunting-sandbox' as ActiveTab,
+          label: 'Threat Hunting Sandbox',
+          icon: Terminal,
+          badge: 'SIGMA'
         }
       ]
     },

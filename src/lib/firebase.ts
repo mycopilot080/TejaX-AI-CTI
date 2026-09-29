@@ -5,34 +5,46 @@ import {
   doc, 
   getDocFromServer, 
   collection, 
-  getDocs, 
-  setDoc, 
-  deleteDoc,
   onSnapshot, 
-  query, 
-  orderBy, 
-  limit 
+  setDoc, 
+  deleteDoc, 
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CTIAdvisory, Asset, ContactDetail, NotableIncident, ThreatReportData, ThreatHuntRequest, DetectionRule } from '../types/cti';
-import { INITIAL_FEEDS } from '../data/mockFeeds';
-import { INITIAL_ASSETS } from '../data/mockAssets';
-import { INITIAL_CONTACTS } from '../data/mockContacts';
+import { 
+  CTIAdvisory, 
+  Asset, 
+  ContactDetail, 
+  NotableIncident, 
+  DetectionRule, 
+  ThreatHuntRequest, 
+  ThreatReportData,
+  HistoricalActor,
+  HistoricalCampaign,
+  HistoricalVulnerability
+} from '../types/cti';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// Test connection on boot as required by skill guidelines
+// Test connection as per SKILL.md
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    console.warn('Firestore connection test bypassed or offline mode active.');
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
   }
 }
 testConnection();
 
+// Operation types for error handling
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -56,7 +68,7 @@ export interface FirestoreErrorInfo {
       providerId?: string | null;
       email?: string | null;
     }[];
-  };
+  }
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -68,377 +80,241 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
         email: provider.email,
       })) || []
     },
     operationType,
     path
-  };
-  console.warn('Firestore Operation Notice (Falling back to local state): ', JSON.stringify(errInfo));
-}
-
-// Threat Feeds Firestore API
-const THREAT_FEEDS_PATH = 'threat_feeds';
-
-export function subscribeThreatFeeds(
-  onData: (advisories: CTIAdvisory[]) => void,
-  onError?: (err: unknown) => void
-) {
-  try {
-    const q = query(collection(db, THREAT_FEEDS_PATH), orderBy('publishedAt', 'desc'), limit(50));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        if (snapshot.empty) {
-          onData(INITIAL_FEEDS);
-          return;
-        }
-        const advisories: CTIAdvisory[] = snapshot.docs.map((doc) => doc.data() as CTIAdvisory);
-        onData(advisories);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, THREAT_FEEDS_PATH);
-        onData(INITIAL_FEEDS);
-        if (onError) onError(error);
-      }
-    );
-  } catch (err) {
-    onData(INITIAL_FEEDS);
-    return () => {};
   }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
-export async function saveThreatFeedAdvisory(advisory: CTIAdvisory): Promise<void> {
-  const sanitizeId = advisory.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${THREAT_FEEDS_PATH}/${sanitizeId}`;
+// --- THREAT FEEDS (ADVISORIES) ---
+export const subscribeThreatFeeds = (callback: (advisories: CTIAdvisory[]) => void) => {
+  return onSnapshot(collection(db, 'threat_feeds'), (snapshot) => {
+    const advisories = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CTIAdvisory));
+    callback(advisories);
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'threat_feeds'));
+};
+
+export const fetchThreatFeedsOnce = async () => {
   try {
-    const docRef = doc(db, THREAT_FEEDS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(advisory));
-    await setDoc(docRef, payload, { merge: true });
+    const snapshot = await getDocs(collection(db, 'threat_feeds'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CTIAdvisory));
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export async function fetchThreatFeedsOnce(): Promise<CTIAdvisory[]> {
-  try {
-    const snapshot = await getDocs(collection(db, THREAT_FEEDS_PATH));
-    if (snapshot.empty) return INITIAL_FEEDS;
-    return snapshot.docs.map((doc) => doc.data() as CTIAdvisory);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, THREAT_FEEDS_PATH);
-    return INITIAL_FEEDS;
-  }
-}
-
-// Assets Firestore API
-const ASSETS_PATH = 'assets';
-
-export async function saveAssetToFirestore(asset: Asset): Promise<void> {
-  const sanitizeId = asset.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${ASSETS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, ASSETS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(asset));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export async function fetchAssetsOnce(): Promise<Asset[]> {
-  try {
-    const snapshot = await getDocs(collection(db, ASSETS_PATH));
-    if (snapshot.empty) return INITIAL_ASSETS;
-    return snapshot.docs.map((doc) => doc.data() as Asset);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, ASSETS_PATH);
-    return INITIAL_ASSETS;
-  }
-}
-
-// Contacts Firestore API
-const CONTACTS_PATH = 'contacts';
-
-export async function saveContactToFirestore(contact: ContactDetail): Promise<void> {
-  const sanitizeId = contact.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${CONTACTS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, CONTACTS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(contact));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export async function fetchContactsOnce(): Promise<ContactDetail[]> {
-  try {
-    const snapshot = await getDocs(collection(db, CONTACTS_PATH));
-    if (snapshot.empty) return INITIAL_CONTACTS;
-    return snapshot.docs.map((doc) => doc.data() as ContactDetail);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, CONTACTS_PATH);
-    return INITIAL_CONTACTS;
-  }
-}
-
-// ============================================================================
-// INCIDENT TICKETS FIRESTORE API
-// ============================================================================
-const INCIDENT_TICKETS_PATH = 'incident_tickets';
-
-export async function saveIncidentTicketToFirestore(incident: NotableIncident): Promise<void> {
-  const sanitizeId = incident.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${INCIDENT_TICKETS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, INCIDENT_TICKETS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(incident));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export function subscribeIncidentTickets(
-  onData: (incidents: NotableIncident[]) => void,
-  onError?: (err: unknown) => void
-) {
-  try {
-    const q = query(collection(db, INCIDENT_TICKETS_PATH), limit(100));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const tickets: NotableIncident[] = snapshot.docs.map((d) => d.data() as NotableIncident);
-          onData(tickets);
-        }
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, INCIDENT_TICKETS_PATH);
-        if (onError) onError(error);
-      }
-    );
-  } catch (err) {
-    return () => {};
-  }
-}
-
-export async function fetchIncidentTicketsOnce(): Promise<NotableIncident[]> {
-  try {
-    const snapshot = await getDocs(collection(db, INCIDENT_TICKETS_PATH));
-    if (snapshot.empty) return [];
-    return snapshot.docs.map((doc) => doc.data() as NotableIncident);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, INCIDENT_TICKETS_PATH);
+    handleFirestoreError(error, OperationType.GET, 'threat_feeds');
     return [];
-  }
-}
-
-export async function deleteIncidentTicketFromFirestore(incidentId: string): Promise<void> {
-  const sanitizeId = incidentId.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${INCIDENT_TICKETS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, INCIDENT_TICKETS_PATH, sanitizeId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
-}
-
-// ============================================================================
-// THREAT REPORTS FIRESTORE API (24-Hour & On-Demand Reports)
-// ============================================================================
-const THREAT_REPORTS_PATH = 'threat_reports';
-
-export async function saveThreatReportToFirestore(report: ThreatReportData): Promise<void> {
-  const sanitizeId = report.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${THREAT_REPORTS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, THREAT_REPORTS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(report));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export function subscribeThreatReports(
-  onData: (reports: ThreatReportData[]) => void,
-  onError?: (err: unknown) => void
-) {
-  try {
-    const q = query(collection(db, THREAT_REPORTS_PATH), limit(100));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const reports: ThreatReportData[] = snapshot.docs.map((d) => d.data() as ThreatReportData);
-          onData(reports);
-        }
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, THREAT_REPORTS_PATH);
-        if (onError) onError(error);
-      }
-    );
-  } catch (err) {
-    return () => {};
-  }
-}
-
-export async function fetchThreatReportsOnce(): Promise<ThreatReportData[]> {
-  try {
-    const snapshot = await getDocs(collection(db, THREAT_REPORTS_PATH));
-    if (snapshot.empty) return [];
-    return snapshot.docs.map((doc) => doc.data() as ThreatReportData);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, THREAT_REPORTS_PATH);
-    return [];
-  }
-}
-
-export async function deleteThreatReportFromFirestore(reportId: string): Promise<void> {
-  const sanitizeId = reportId.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${THREAT_REPORTS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, THREAT_REPORTS_PATH, sanitizeId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
-}
-
-// ============================================================================
-// THREAT HUNT REQUESTS FIRESTORE API
-// ============================================================================
-const HUNT_REQUESTS_PATH = 'hunt_requests';
-
-export async function saveThreatHuntRequestToFirestore(hunt: ThreatHuntRequest): Promise<void> {
-  const sanitizeId = hunt.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${HUNT_REQUESTS_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, HUNT_REQUESTS_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(hunt));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export function subscribeThreatHuntRequests(
-  onData: (hunts: ThreatHuntRequest[]) => void,
-  onError?: (err: unknown) => void
-) {
-  try {
-    const q = query(collection(db, HUNT_REQUESTS_PATH), limit(100));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const hunts: ThreatHuntRequest[] = snapshot.docs.map((d) => d.data() as ThreatHuntRequest);
-          onData(hunts);
-        }
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, HUNT_REQUESTS_PATH);
-        if (onError) onError(error);
-      }
-    );
-  } catch (err) {
-    return () => {};
-  }
-}
-
-export async function fetchThreatHuntRequestsOnce(): Promise<ThreatHuntRequest[]> {
-  try {
-    const snapshot = await getDocs(collection(db, HUNT_REQUESTS_PATH));
-    if (snapshot.empty) return [];
-    return snapshot.docs.map((doc) => doc.data() as ThreatHuntRequest);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, HUNT_REQUESTS_PATH);
-    return [];
-  }
-}
-
-// ============================================================================
-// DETECTION RULES FIRESTORE API
-// ============================================================================
-const DETECTION_RULES_PATH = 'detection_rules';
-
-export async function saveDetectionRuleToFirestore(rule: DetectionRule): Promise<void> {
-  const sanitizeId = rule.id.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${DETECTION_RULES_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, DETECTION_RULES_PATH, sanitizeId);
-    const payload = JSON.parse(JSON.stringify(rule));
-    await setDoc(docRef, payload, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export function subscribeDetectionRules(
-  onData: (rules: DetectionRule[]) => void,
-  onError?: (err: unknown) => void
-) {
-  try {
-    const q = query(collection(db, DETECTION_RULES_PATH), limit(200));
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const rules: DetectionRule[] = snapshot.docs.map((d) => d.data() as DetectionRule);
-          onData(rules);
-        }
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, DETECTION_RULES_PATH);
-        if (onError) onError(error);
-      }
-    );
-  } catch (err) {
-    return () => {};
-  }
-}
-
-export async function fetchDetectionRulesOnce(): Promise<DetectionRule[]> {
-  try {
-    const snapshot = await getDocs(collection(db, DETECTION_RULES_PATH));
-    if (snapshot.empty) return [];
-    return snapshot.docs.map((doc) => doc.data() as DetectionRule);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, DETECTION_RULES_PATH);
-    return [];
-  }
-}
-
-export async function deleteDetectionRuleFromFirestore(ruleId: string): Promise<void> {
-  const sanitizeId = ruleId.replace(/[^a-zA-Z0-9_\-]/g, '_');
-  const path = `${DETECTION_RULES_PATH}/${sanitizeId}`;
-  try {
-    const docRef = doc(db, DETECTION_RULES_PATH, sanitizeId);
-    await deleteDoc(docRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
-}
-
-export const FIRESTORE_CONFIG_INFO = {
-  projectId: firebaseConfig.projectId,
-  databaseId: firebaseConfig.firestoreDatabaseId,
-  appName: 'Tejax Cyber Threat Intelligence Platform',
-  collections: {
-    threatReports: THREAT_REPORTS_PATH,
-    incidentTickets: INCIDENT_TICKETS_PATH,
-    threatFeeds: THREAT_FEEDS_PATH,
-    assets: ASSETS_PATH,
-    contacts: CONTACTS_PATH,
-    huntRequests: HUNT_REQUESTS_PATH,
-    detectionRules: DETECTION_RULES_PATH
   }
 };
 
+export const saveThreatFeedAdvisory = async (advisory: CTIAdvisory) => {
+  try {
+    await setDoc(doc(db, 'threat_feeds', advisory.id), advisory, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `threat_feeds/${advisory.id}`);
+  }
+};
 
+// --- ASSETS ---
+export const fetchAssetsOnce = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'assets'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Asset));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'assets');
+    return [];
+  }
+};
+
+export const saveAssetToFirestore = async (asset: Asset) => {
+  try {
+    await setDoc(doc(db, 'assets', asset.id), asset, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `assets/${asset.id}`);
+  }
+};
+
+// --- CONTACTS ---
+export const fetchContactsOnce = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'contacts'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ContactDetail));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'contacts');
+    return [];
+  }
+};
+
+export const saveContactToFirestore = async (contact: ContactDetail) => {
+  try {
+    await setDoc(doc(db, 'contacts', contact.id), contact, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `contacts/${contact.id}`);
+  }
+};
+
+// --- INCIDENT TICKETS ---
+export const subscribeIncidentTickets = (callback: (incidents: NotableIncident[]) => void) => {
+  return onSnapshot(collection(db, 'incident_tickets'), (snapshot) => {
+    const incidents = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as NotableIncident));
+    callback(incidents);
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'incident_tickets'));
+};
+
+export const fetchIncidentTicketsOnce = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'incident_tickets'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as NotableIncident));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'incident_tickets');
+    return [];
+  }
+};
+
+export const saveIncidentTicketToFirestore = async (incident: NotableIncident) => {
+  try {
+    await setDoc(doc(db, 'incident_tickets', incident.id), incident, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `incident_tickets/${incident.id}`);
+  }
+};
+
+export const deleteIncidentTicketFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'incident_tickets', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `incident_tickets/${id}`);
+  }
+};
+
+// --- DETECTION RULES ---
+export const subscribeDetectionRules = (callback: (rules: DetectionRule[]) => void) => {
+  return onSnapshot(collection(db, 'detection_rules'), (snapshot) => {
+    const rules = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as DetectionRule));
+    callback(rules);
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'detection_rules'));
+};
+
+export const fetchDetectionRulesOnce = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'detection_rules'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as DetectionRule));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'detection_rules');
+    return [];
+  }
+};
+
+export const saveDetectionRuleToFirestore = async (rule: DetectionRule) => {
+  try {
+    await setDoc(doc(db, 'detection_rules', rule.id), rule, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `detection_rules/${rule.id}`);
+  }
+};
+
+export const deleteDetectionRuleFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'detection_rules', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `detection_rules/${id}`);
+  }
+};
+
+// --- THREAT HUNTS ---
+export const subscribeThreatHuntRequests = (callback: (hunts: ThreatHuntRequest[]) => void) => {
+  return onSnapshot(collection(db, 'threat_hunts'), (snapshot) => {
+    const hunts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ThreatHuntRequest));
+    callback(hunts);
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'threat_hunts'));
+};
+
+export const saveThreatHuntRequestToFirestore = async (hunt: ThreatHuntRequest) => {
+  try {
+    await setDoc(doc(db, 'threat_hunts', hunt.id), hunt, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `threat_hunts/${hunt.id}`);
+  }
+};
+
+// --- THREAT REPORTS ---
+export const subscribeThreatReports = (callback: (reports: ThreatReportData[]) => void) => {
+  return onSnapshot(collection(db, 'threat_reports'), (snapshot) => {
+    const reports = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ThreatReportData));
+    callback(reports);
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'threat_reports'));
+};
+
+export const saveThreatReportToFirestore = async (report: ThreatReportData) => {
+  try {
+    await setDoc(doc(db, 'threat_reports', report.id), report, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `threat_reports/${report.id}`);
+  }
+};
+
+export const deleteThreatReportFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'threat_reports', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `threat_reports/${id}`);
+  }
+};
+
+// --- HISTORICAL DATA ---
+export const fetchHistoricalActors = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'historical_actors'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as HistoricalActor));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'historical_actors');
+    return [];
+  }
+};
+
+export const saveHistoricalActor = async (actor: HistoricalActor) => {
+  try {
+    await setDoc(doc(db, 'historical_actors', actor.id), actor, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `historical_actors/${actor.id}`);
+  }
+};
+
+export const fetchHistoricalCampaigns = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'historical_campaigns'));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as HistoricalCampaign));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'historical_campaigns');
+    return [];
+  }
+};
+
+export const saveHistoricalCampaign = async (campaign: HistoricalCampaign) => {
+  try {
+    await setDoc(doc(db, 'historical_campaigns', campaign.id), campaign, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `historical_campaigns/${campaign.id}`);
+  }
+};
+
+export const fetchHistoricalVulnerabilities = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'historical_vulnerabilities'));
+    return snapshot.docs.map(doc => ({ ...doc.data() } as HistoricalVulnerability));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'historical_vulnerabilities');
+    return [];
+  }
+};
+
+export const saveHistoricalVulnerability = async (vuln: HistoricalVulnerability) => {
+  try {
+    await setDoc(doc(db, 'historical_vulnerabilities', vuln.cveId), vuln, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `historical_vulnerabilities/${vuln.cveId}`);
+  }
+};

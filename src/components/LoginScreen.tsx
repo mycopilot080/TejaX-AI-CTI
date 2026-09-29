@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Lock, Mail, ArrowRight, ShieldCheck, Zap, RefreshCw } from 'lucide-react';
+import { ShieldAlert, Lock, Mail, ArrowRight, ShieldCheck, Zap, RefreshCw, Chrome } from 'lucide-react';
+import { useFirebase } from '../contexts/FirebaseContext';
 
 interface LoginScreenProps {
   onLogin: (email: string) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+  const { signIn } = useFirebase();
   const [email, setEmail] = useState('Sharath@Tejax.ai');
   const [password, setPassword] = useState('••••••••••••');
   const [loading, setLoading] = useState(false);
@@ -17,6 +19,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       onLogin(email || 'Sharath@Tejax.ai');
       setLoading(false);
     }, 600);
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    await signIn();
+    setLoading(false);
   };
 
   return (
@@ -138,6 +146,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   </>
                 )}
               </div>
+            </button>
+
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-800"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-widest">
+                <span className="bg-slate-900 px-2 text-slate-500">OR</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 text-xs"
+            >
+              <Chrome className="w-4 h-4" />
+              <span>Sign in with Google</span>
             </button>
           </form>
 

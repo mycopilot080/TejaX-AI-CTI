@@ -78,7 +78,7 @@ Generate a comprehensive CTI Report JSON containing:
 - recommendedMitigations (array of strings)`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         systemInstruction,
@@ -122,8 +122,8 @@ Generate a comprehensive CTI Report JSON containing:
 // Endpoint 2: Multi-Turn AI CTI & Threat Hunting Assistant
 app.post('/api/chat/assistant', async (req: Request, res: Response) => {
   try {
-    const { messages, model } = req.body;
-    const selectedModel = model === 'gemini-3.1-pro-preview' ? 'gemini-3.1-pro-preview' : 'gemini-3.8-flash';
+    const { messages, model, historicalContext } = req.body;
+    const selectedModel = model === 'gemini-2.0-pro-exp-02-05' ? 'gemini-2.0-pro-exp-02-05' : 'gemini-2.0-flash';
 
     const systemInstruction = `You are "Tejax Cyber AI Assistant", an expert CTI Analyst, Threat Hunter, and Splunk SIEM Detection Engineer.
 Your role is to assist security operations analysts with:
@@ -131,9 +131,13 @@ Your role is to assist security operations analysts with:
 2. Converting Sigma rules into Splunk SPL, Microsoft Sentinel KQL, and CrowdStrike CQL.
 3. Formulating Threat Hunting Hypotheses based on MITRE ATT&CK TTPs.
 4. Explaining threat actor behaviors (e.g. APT28, Scattered Spider, Volt Typhoon, LockBit 3.0).
-5. Providing incident response playbooks and remediation steps.
+5. Analyzing long-term patterns and attacker evolution using historical intelligence.
+6. Providing incident response playbooks and remediation steps.
 
-Format code blocks clearly using markdown syntax (e.g. \`\`\`spl ... \`\`\`, \`\`\`kql ... \`\`\`, \`\`\`yaml ... \`\`\`, \`\`\`python ... \`\`\`).
+${historicalContext ? `HISTORICAL DATA ACCESS ENABLED: Use the following historical context to answer the user's query about past campaigns, evolution, and trends:
+${historicalContext}` : ''}
+
+Format code blocks clearly using markdown syntax.
 Provide crisp, authoritative, actionable security guidance with tabular or bulleted breakdowns when appropriate.`;
 
     const formattedContents = (messages || []).map((m: any) => ({
@@ -289,7 +293,7 @@ Include:
 - SLA Compliance metric (e.g. 98.6%)`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         systemInstruction,
@@ -349,7 +353,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
   app.use(vite.middlewares);
 } else {
-  app.use(express.static('dist'));
+  app.use(express.static(path.join(__dirname, 'dist')));
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });

@@ -1,9 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
+    // Global helpers
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isValidId(id) {
@@ -18,129 +27,74 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function isValidAdvisory(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.title is string && data.title.size() <= 512
-        && data.source is string && data.source.size() <= 128
-        && data.cveId is string && data.cveId.size() <= 64
-        && (data.cvssScore is number || data.cvssScore is int)
-        && data.summary is string && data.summary.size() <= 4096
-        && data.publishedAt is string && data.publishedAt.size() <= 64;
+    function isValidThreatWikiArticle(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'severity', 'riskScore', 'lastUpdated', 'author', 'userId'])
+        && data.keys().hasOnly([
+          'id', 'title', 'category', 'severity', 'riskScore', 'lastUpdated', 'author', 'version', 
+          'aliases', 'tags', 'origin', 'motivation', 'targetSectors', 'summary', 'technicalDetails', 
+          'killChainStage', 'mitreTechniques', 'iocs', 'detectionQueries', 'mitigations', 
+          'references', 'relatedArticleIds', 'userId'
+        ])
+        && data.id is string && data.id.size() <= 64
+        && data.title is string && data.title.size() <= 256
+        && data.category in ['actor', 'malware', 'ttp', 'cve', 'framework', 'tool']
+        && data.severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'INFORMATIONAL']
+        && data.riskScore is int && data.riskScore >= 0 && data.riskScore <= 100
+        && data.author is string && data.author.size() <= 128
+        && data.userId == request.auth.uid;
     }
 
-    function isValidAsset(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.hostname is string && data.hostname.size() <= 128
-        && data.ipAddress is string && data.ipAddress.size() <= 64
-        && data.environment is string && data.environment.size() <= 64
-        && data.tier is string && data.tier.size() <= 64;
+    function isValidHistoricalActor(data) {
+      return data.keys().hasAll(['id', 'name', 'userId'])
+        && data.keys().hasOnly(['id', 'name', 'aliases', 'firstObserved', 'lastObserved', 'evolutionSummary', 'pastCampaignIds', 'userId'])
+        && data.id is string && data.name is string && data.userId == request.auth.uid;
     }
 
-    function isValidContact(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.name is string && data.name.size() <= 128
-        && data.email is string && data.email.size() <= 128
-        && data.shiftCoverage is string && data.shiftCoverage.size() <= 64;
+    function isValidHistoricalCampaign(data) {
+      return data.keys().hasAll(['id', 'title', 'actorId', 'userId'])
+        && data.keys().hasOnly(['id', 'title', 'actorId', 'startDate', 'endDate', 'targetIndustries', 'ttpsUsed', 'outcome', 'userId'])
+        && data.id is string && data.title is string && data.actorId is string && data.userId == request.auth.uid;
     }
 
-    function isValidIncidentTicket(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.title is string && data.title.size() <= 512
-        && (data.severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
-        && (data.riskScore is number || data.riskScore is int)
-        && (data.status in ['NEW', 'IN_PROGRESS', 'MITIGATED', 'FALSE_POSITIVE', 'CLOSED'])
-        && (data.slaTargetMinutes is number || data.slaTargetMinutes is int)
-        && data.slaStartTime is string && data.slaStartTime.size() <= 64
-        && data.assignedAnalyst is string && data.assignedAnalyst.size() <= 128
-        && data.affectedHost is string && data.affectedHost.size() <= 128;
+    function isValidHistoricalVulnerability(data) {
+      return data.keys().hasAll(['cveId', 'userId'])
+        && data.keys().hasOnly(['cveId', 'firstDisclosed', 'exploitEvolution', 'patchAdoptionRate', 'userId'])
+        && data.cveId is string && data.userId == request.auth.uid;
     }
 
-    function isValidThreatReport(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.title is string && data.title.size() <= 512
-        && data.severity is string && data.severity.size() <= 32
-        && data.publishedAt is string && data.publishedAt.size() <= 64
-        && data.executiveSummary is string && data.executiveSummary.size() <= 8192
-        && (!('tlp' in data) || (data.tlp is string && data.tlp.size() <= 32));
+    match /threat_wiki/{articleId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(articleId) && isValidThreatWikiArticle(incoming());
+      allow update: if isSignedIn() && isValidId(articleId) && isValidThreatWikiArticle(incoming()) && isOwner(existing().userId);
+      allow delete: if isSignedIn() && isOwner(existing().userId);
     }
 
-    function isValidHuntRequest(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.actorName is string && data.actorName.size() <= 256
-        && data.hypothesis is string && data.hypothesis.size() <= 4096
-        && data.priority is string && data.priority.size() <= 64
-        && data.assignedHunter is string && data.assignedHunter.size() <= 128
-        && data.status is string && data.status.size() <= 64
-        && data.requestedAt is string && data.requestedAt.size() <= 64;
+    match /historical_actors/{actorId} {
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && isValidId(actorId) && isValidHistoricalActor(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().userId);
     }
 
-    function isValidDetectionRule(data) {
-      return data.id is string && data.id.size() <= 128
-        && data.name is string && data.name.size() <= 512
-        && data.category is string && data.category.size() <= 128
-        && data.severity is string && data.severity.size() <= 32
-        && data.splQuery is string && data.splQuery.size() <= 8192;
+    match /historical_campaigns/{campaignId} {
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && isValidId(campaignId) && isValidHistoricalCampaign(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().userId);
     }
 
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
+    match /historical_vulnerabilities/{cveId} {
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && isValidId(cveId) && isValidHistoricalVulnerability(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().userId);
     }
 
-    // Threat Feeds Collection
-    match /threat_feeds/{advisoryId} {
-      allow read: if true;
-      allow create: if isValidId(advisoryId) && isValidAdvisory(incoming());
-      allow update: if isValidId(advisoryId) && isValidAdvisory(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    // Assets Collection
-    match /assets/{assetId} {
-      allow read: if true;
-      allow create: if isValidId(assetId) && isValidAsset(incoming());
-      allow update: if isValidId(assetId) && isValidAsset(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    // Contacts Collection
-    match /contacts/{contactId} {
-      allow read: if true;
-      allow create: if isValidId(contactId) && isValidContact(incoming());
-      allow update: if isValidId(contactId) && isValidContact(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    // Incident Tickets Collection
-    match /incident_tickets/{ticketId} {
-      allow read: if true;
-      allow create: if isValidId(ticketId) && isValidIncidentTicket(incoming());
-      allow update: if isValidId(ticketId) && isValidIncidentTicket(incoming());
-      allow delete: if true;
-    }
-
-    // Threat Reports Collection (24-Hour & On-Demand)
-    match /threat_reports/{reportId} {
-      allow read: if true;
-      allow create: if isValidId(reportId) && isValidThreatReport(incoming());
-      allow update: if isValidId(reportId) && isValidThreatReport(incoming());
-      allow delete: if true;
-    }
-
-    // Threat Hunt Requests Collection
-    match /hunt_requests/{requestId} {
-      allow read: if true;
-      allow create: if isValidId(requestId) && isValidHuntRequest(incoming());
-      allow update: if isValidId(requestId) && isValidHuntRequest(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    // Detection Rules Collection
-    match /detection_rules/{ruleId} {
-      allow read: if true;
-      allow create: if isValidId(ruleId) && isValidDetectionRule(incoming());
-      allow update: if isValidId(ruleId) && isValidDetectionRule(incoming());
-      allow delete: if true;
-    }
+    // Support for other application entities (seeding and sync)
+    match /threat_feeds/{id} { allow read, write: if isSignedIn(); }
+    match /assets/{id} { allow read, write: if isSignedIn(); }
+    match /contacts/{id} { allow read, write: if isSignedIn(); }
+    match /incident_tickets/{id} { allow read, write: if isSignedIn(); }
+    match /detection_rules/{id} { allow read, write: if isSignedIn(); }
+    match /threat_hunts/{id} { allow read, write: if isSignedIn(); }
+    match /threat_reports/{id} { allow read, write: if isSignedIn(); }
   }
 }

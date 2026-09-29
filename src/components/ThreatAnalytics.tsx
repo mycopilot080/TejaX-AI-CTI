@@ -174,7 +174,7 @@ export const ThreatAnalytics: React.FC<ThreatAnalyticsProps> = ({
   const [huntRequestsList, setHuntRequestsList] = useState<ThreatHuntRequest[]>([]);
 
   useEffect(() => {
-    const unsubscribe = subscribeThreatHuntRequests((firestoreHunts) => {
+    const unsubscribe = subscribeThreatHuntRequests((firestoreHunts: ThreatHuntRequest[]) => {
       if (firestoreHunts && firestoreHunts.length > 0) {
         setHuntRequestsList(firestoreHunts);
       } else {

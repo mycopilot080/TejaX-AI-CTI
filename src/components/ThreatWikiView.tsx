@@ -37,6 +37,20 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import {
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  doc,
+  deleteDoc,
+  query,
+  orderBy,
+  setDoc,
+  serverTimestamp
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { useFirebase } from '../contexts/FirebaseContext';
+import {
   INITIAL_WIKI_ARTICLES,
   ThreatWikiArticle,
   WikiCategory,
@@ -57,19 +71,40 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
   onNavigateToSIEM,
   onNavigateToHunting
 }) => {
-  // Articles state with localStorage persistence
-  const [articles, setArticles] = useState<ThreatWikiArticle[]>(() => {
-    const saved = localStorage.getItem('tejax_threat_wiki_articles');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
-        console.error('Failed to parse saved threat wiki articles', e);
-      }
+  const { user, signIn } = useFirebase();
+
+  // Articles state with Firestore sync
+  const [articles, setArticles] = useState<ThreatWikiArticle[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // If not logged in, show initial mock data but disable persistent edits
+    if (!user) {
+      setArticles(INITIAL_WIKI_ARTICLES);
+      setLoading(false);
+      return;
     }
-    return INITIAL_WIKI_ARTICLES;
-  });
+
+    const q = query(collection(db, 'threat_wiki'), orderBy('lastUpdated', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedArticles = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as ThreatWikiArticle[];
+
+      if (fetchedArticles.length === 0) {
+        // Show mock data if DB is empty for this user/tenant
+        setArticles(INITIAL_WIKI_ARTICLES);
+      } else {
+        setArticles(fetchedArticles);
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   // Bookmarks state with localStorage persistence
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
@@ -131,6 +166,50 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Edit Article State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editSummary, setEditSummary] = useState('');
+  const [editTechnicalDetails, setEditTechnicalDetails] = useState('');
+  const [editMitigationNotes, setEditMitigationNotes] = useState('');
+
+  const startEditing = (art: ThreatWikiArticle) => {
+    setEditTitle(art.title);
+    setEditSummary(art.summary);
+    setEditTechnicalDetails(art.technicalDetails.join('\n'));
+    setEditMitigationNotes(art.mitigations.join('\n'));
+    setIsEditing(true);
+  };
+
+  const handleUpdateArticle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedArticle) return;
+    if (!user) {
+      showToast('Please sign in to save changes to the cloud.');
+      signIn();
+      return;
+    }
+
+    const updatedArticleData = {
+      ...selectedArticle,
+      title: editTitle,
+      summary: editSummary,
+      technicalDetails: editTechnicalDetails.split('\n').map(s => s.trim()).filter(Boolean),
+      mitigations: editMitigationNotes.split('\n').map(s => s.trim()).filter(Boolean),
+      lastUpdated: serverTimestamp(),
+      userId: selectedArticle.userId || user.uid
+    };
+
+    try {
+      await setDoc(doc(db, 'threat_wiki', selectedArticle.id), updatedArticleData, { merge: true });
+      setIsEditing(false);
+      showToast(`Updated Threat Wiki Article: "${updatedArticleData.title}"`);
+      setSelectedArticle(updatedArticleData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `threat_wiki/${selectedArticle.id}`);
+    }
+  };
+
   const toggleBookmark = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setBookmarkedIds((prev) => {
@@ -140,10 +219,10 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
     });
   };
 
-  // Save articles to localStorage on change
-  useEffect(() => {
-    localStorage.setItem('tejax_threat_wiki_articles', JSON.stringify(articles));
-  }, [articles]);
+  // Remove the useEffect that saves to localStorage
+  // useEffect(() => {
+  //   localStorage.setItem('tejax_threat_wiki_articles', JSON.stringify(articles));
+  // }, [articles]);
 
   // Filtered articles logic
   const filteredArticles = useMemo(() => {
@@ -212,9 +291,17 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
 
   // Export single article as Markdown
   const handleExportArticleMarkdown = (art: ThreatWikiArticle) => {
+    const formatDate = (date: any) => {
+      if (!date) return 'N/A';
+      if (typeof date === 'string') return date;
+      if (date.toDate) return date.toDate().toLocaleString();
+      if (date instanceof Date) return date.toLocaleString();
+      return String(date);
+    };
+
     let md = `# Threat Wiki Intelligence Dossier: ${art.title}\n\n`;
     md += `**Category:** ${art.category.toUpperCase()} | **Severity:** ${art.severity} | **Risk Score:** ${art.riskScore}/100\n`;
-    md += `**Author:** ${art.author} | **Version:** ${art.version} | **Last Updated:** ${art.lastUpdated}\n\n`;
+    md += `**Author:** ${art.author} | **Version:** ${art.version} | **Last Updated:** ${formatDate(art.lastUpdated)}\n\n`;
     if (art.aliases.length > 0) md += `**Aliases:** ${art.aliases.join(', ')}\n\n`;
     if (art.origin) md += `**Attribution / Origin:** ${art.origin}\n\n`;
     if (art.motivation) md += `**Motivation:** ${art.motivation}\n\n`;
@@ -256,21 +343,28 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
   };
 
   // Add custom article submission handler
-  const handleCreateArticle = (e: React.FormEvent) => {
+  const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
       showToast('Please provide a title for the Threat Wiki article.');
       return;
     }
 
+    if (!user) {
+      showToast('Please sign in to add entries to the intelligence catalog.');
+      signIn();
+      return;
+    }
+
+    const createdArticleId = `WIKI-CUSTOM-${Date.now().toString().slice(-4)}`;
     const createdArticle: ThreatWikiArticle = {
-      id: `WIKI-CUSTOM-${Date.now().toString().slice(-4)}`,
+      id: createdArticleId,
       title: newTitle.trim(),
       category: newCategory,
       severity: newSeverity,
       riskScore: Number(newRiskScore) || 80,
-      lastUpdated: new Date().toISOString(),
-      author: 'Tejax SOC Analyst',
+      lastUpdated: serverTimestamp(),
+      author: user.displayName || 'Tejax SOC Analyst',
       version: '1.0',
       aliases: newAliases.split(',').map((s) => s.trim()).filter(Boolean),
       tags: newTags.split(',').map((s) => s.trim()).filter(Boolean),
@@ -296,24 +390,29 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
       },
       mitigations: newMitigationNotes.split('\n').map((s) => s.trim()).filter(Boolean),
       references: [{ title: 'Tejax Internal SOC Incident Analysis', source: 'SOC Internal' }],
-      relatedArticleIds: []
+      relatedArticleIds: [],
+      userId: user.uid
     };
 
-    setArticles((prev) => [createdArticle, ...prev]);
-    setIsAddModalOpen(false);
-    // Reset form
-    setNewTitle('');
-    setNewAliases('');
-    setNewTags('');
-    setNewOrigin('');
-    setNewTargetSectors('');
-    setNewSummary('');
-    setNewTechnicalDetails('');
-    setNewIocValues('');
-    setNewSplQuery('');
-    setNewMitigationNotes('');
-    showToast(`Created Threat Wiki Article: "${createdArticle.title}"`);
-    setSelectedArticle(createdArticle);
+    try {
+      await setDoc(doc(db, 'threat_wiki', createdArticleId), createdArticle);
+      setIsAddModalOpen(false);
+      // Reset form
+      setNewTitle('');
+      setNewAliases('');
+      setNewTags('');
+      setNewOrigin('');
+      setNewTargetSectors('');
+      setNewSummary('');
+      setNewTechnicalDetails('');
+      setNewIocValues('');
+      setNewSplQuery('');
+      setNewMitigationNotes('');
+      showToast(`Created Threat Wiki Article: "${createdArticle.title}"`);
+      setSelectedArticle(createdArticle);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'threat_wiki');
+    }
   };
 
   const getCategoryBadge = (cat: WikiCategory) => {
@@ -392,6 +491,22 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2.5 flex-wrap">
+            {!user ? (
+              <button
+                onClick={signIn}
+                className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-950 hover:bg-slate-200 transition-all shadow-md active:scale-95"
+              >
+                <Globe className="w-4 h-4" />
+                <span>Login with Google</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700">
+                <div className="w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center text-[10px] font-bold text-slate-950">
+                  {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
+                </div>
+                <span className="text-[11px] font-medium text-slate-200">{user.displayName || user.email}</span>
+              </div>
+            )}
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all shadow-md shadow-cyan-500/20 active:scale-95"
@@ -598,25 +713,33 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
         </div>
       </div>
 
-      {/* VIEW MODE 1: CARD GRID */}
-      {viewMode === 'cards' && (
+      {/* VIEW MODES */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <Activity className="w-8 h-8 text-cyan-500 animate-spin" />
+          <p className="text-sm font-mono text-slate-400">Synchronizing with Threat Intelligence Cloud...</p>
+        </div>
+      ) : (
         <>
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-            <span>
-              Showing <span className="text-white font-mono font-bold">{filteredArticles.length}</span> matching threat
-              wiki articles
-            </span>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-cyan-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
-              >
-                <X className="w-3 h-3" /> Clear search filter
-              </button>
-            )}
-          </div>
+          {/* VIEW MODE 1: CARD GRID */}
+          {viewMode === 'cards' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>
+                  Showing <span className="text-white font-mono font-bold">{filteredArticles.length}</span> matching threat
+                  wiki articles
+                </span>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="text-cyan-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                  >
+                    <X className="w-3 h-3" /> Clear search filter
+                  </button>
+                )}
+              </div>
 
-          {filteredArticles.length === 0 ? (
+              {filteredArticles.length === 0 ? (
             <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
               <BookOpen className="w-10 h-10 text-slate-600 mx-auto" />
               <h3 className="text-sm font-bold text-white">No Threat Wiki Entries Found</h3>
@@ -745,6 +868,8 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
         </>
       )}
 
@@ -1008,6 +1133,17 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
 
               {/* Action Toolbar */}
               <div className="flex items-center gap-2">
+                {!isEditing && (
+                  <button
+                    onClick={() => startEditing(selectedArticle)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/20"
+                    title="Edit Dossier"
+                  >
+                    <Code2 className="w-3.5 h-3.5" />
+                    <span>Edit Article</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => toggleBookmark(selectedArticle.id)}
                   className={`p-2 rounded-xl border transition-all ${
@@ -1042,459 +1178,533 @@ export const ThreatWikiView: React.FC<ThreatWikiViewProps> = ({
               </div>
             </div>
 
-            {/* Dossier Tabs Navigation */}
-            <div className="bg-slate-950 border-b border-slate-800 px-5 flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'overview', label: 'Executive Overview', icon: FileText },
-                { id: 'technical', label: 'Technical Analysis', icon: Code2 },
-                { id: 'mitre', label: `MITRE ATT&CK (${selectedArticle.mitreTechniques.length})`, icon: Layers },
-                { id: 'iocs', label: `Observables & IOCs (${selectedArticle.iocs.length})`, icon: Hash },
-                { id: 'detection', label: 'Detection Engineering', icon: Terminal },
-                { id: 'mitigation', label: `Defenses (${selectedArticle.mitigations.length})`, icon: Shield }
-              ].map((tab) => {
-                const TabIcon = tab.icon;
-                const isActive = activeDossierTab === tab.id;
-                return (
+            {isEditing ? (
+              <form onSubmit={handleUpdateArticle} className="p-6 overflow-y-auto space-y-4 flex-1">
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
+                      Article Title
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
+                      Executive Intelligence Summary
+                    </label>
+                    <textarea
+                      rows={4}
+                      required
+                      value={editSummary}
+                      onChange={(e) => setEditSummary(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
+                      Technical Details (one observation per line)
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={editTechnicalDetails}
+                      onChange={(e) => setEditTechnicalDetails(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 leading-relaxed font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
+                      Defensive Mitigations (one per line)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={editMitigationNotes}
+                      onChange={(e) => setEditMitigationNotes(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-slate-800 flex items-center justify-end gap-3">
                   <button
-                    key={tab.id}
-                    onClick={() => setActiveDossierTab(tab.id as any)}
-                    className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
-                      isActive
-                        ? 'border-cyan-400 text-cyan-300'
-                        : 'border-transparent text-slate-400 hover:text-slate-200'
-                    }`}
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700"
                   >
-                    <TabIcon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400' : 'text-slate-500'}`} />
-                    <span>{tab.label}</span>
+                    Discard Changes
                   </button>
-                );
-              })}
-            </div>
-
-            {/* Dossier Body Content */}
-            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-200 text-xs">
-              {/* TAB 1: OVERVIEW */}
-              {activeDossierTab === 'overview' && (
-                <div className="space-y-6">
-                  {/* Summary Box */}
-                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400">
-                      Executive Intelligence Briefing
-                    </h4>
-                    <p className="text-xs leading-relaxed text-slate-200 font-sans">{selectedArticle.summary}</p>
-                  </div>
-
-                  {/* Attributes Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {selectedArticle.origin && (
-                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-                        <div className="text-[10px] font-mono uppercase text-slate-500">Origin / Attribution</div>
-                        <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
-                          <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>{selectedArticle.origin}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedArticle.motivation && (
-                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-                        <div className="text-[10px] font-mono uppercase text-slate-500">Primary Motivation</div>
-                        <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
-                          <Crosshair className="w-3.5 h-3.5 text-rose-400" />
-                          <span>{selectedArticle.motivation}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-                      <div className="text-[10px] font-mono uppercase text-slate-500">Intelligence Source / Lab</div>
-                      <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{selectedArticle.author}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Target Sectors */}
-                  {selectedArticle.targetSectors.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-400">
-                        Targeted Industry Sectors
-                      </h4>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {selectedArticle.targetSectors.map((sector) => (
-                          <span
-                            key={sector}
-                            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 flex items-center gap-1.5"
-                          >
-                            <Building className="w-3 h-3 text-cyan-400" />
-                            {sector}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* References */}
-                  {selectedArticle.references.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-400">
-                        Source Authorities &amp; Advisory Citations
-                      </h4>
-                      <ul className="space-y-1.5 font-mono text-[11px]">
-                        {selectedArticle.references.map((ref, idx) => (
-                          <li key={idx} className="flex items-center gap-2 text-slate-300">
-                            <ChevronRight className="w-3 h-3 text-cyan-400 shrink-0" />
-                            <span className="font-semibold text-white">{ref.title}</span>
-                            <span className="text-slate-500">({ref.source})</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  <button
+                    type="submit"
+                    className="px-6 py-2 text-xs font-semibold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-lg shadow-cyan-500/20"
+                  >
+                    Save Changes
+                  </button>
                 </div>
-              )}
-
-              {/* TAB 2: TECHNICAL DETAILS */}
-              {activeDossierTab === 'technical' && (
-                <div className="space-y-4">
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400 mb-3">
-                      Adversary Tradecraft &amp; Technical Capabilities
-                    </h4>
-                    <div className="space-y-3 font-sans leading-relaxed text-slate-200">
-                      {selectedArticle.technicalDetails.map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                          <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60 flex items-center justify-center font-mono text-[11px] font-bold shrink-0">
-                            {idx + 1}
-                          </span>
-                          <p className="text-xs text-slate-300 mt-0.5">{item}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Kill Chain Stage */}
-                  {selectedArticle.killChainStage && (
-                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] font-mono uppercase text-slate-500">Lockheed Martin Cyber Kill Chain Stage</div>
-                        <div className="text-xs font-bold text-white mt-0.5">{selectedArticle.killChainStage}</div>
-                      </div>
-                      <span className="px-2 py-1 rounded text-xs font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                        ACTIVE STAGE
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: MITRE ATT&CK */}
-              {activeDossierTab === 'mitre' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-purple-400">
-                      Mapped MITRE ATT&amp;CK Techniques
-                    </h4>
-                    {onNavigateTab && (
+              </form>
+            ) : (
+              <>
+                {/* Dossier Tabs Navigation */}
+                <div className="bg-slate-950 border-b border-slate-800 px-5 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  {[
+                    { id: 'overview', label: 'Executive Overview', icon: FileText },
+                    { id: 'technical', label: 'Technical Analysis', icon: Code2 },
+                    { id: 'mitre', label: `MITRE ATT&CK (${selectedArticle.mitreTechniques.length})`, icon: Layers },
+                    { id: 'iocs', label: `Observables & IOCs (${selectedArticle.iocs.length})`, icon: Hash },
+                    { id: 'detection', label: 'Detection Engineering', icon: Terminal },
+                    { id: 'mitigation', label: `Defenses (${selectedArticle.mitigations.length})`, icon: Shield }
+                  ].map((tab) => {
+                    const TabIcon = tab.icon;
+                    const isActive = activeDossierTab === tab.id;
+                    return (
                       <button
-                        onClick={() => {
-                          if (onNavigateToHunting) {
-                            onNavigateToHunting(selectedArticle.mitreTechniques[0]?.id || 'T1003');
-                          }
-                          onNavigateTab('threat-hunting-sandbox');
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30"
+                        key={tab.id}
+                        onClick={() => setActiveDossierTab(tab.id as any)}
+                        className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
+                          isActive
+                            ? 'border-cyan-400 text-cyan-300'
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                        }`}
                       >
-                        <Terminal className="w-3.5 h-3.5" />
-                        <span>Hunt in Sigma Sandbox</span>
+                        <TabIcon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400' : 'text-slate-500'}`} />
+                        <span>{tab.label}</span>
                       </button>
-                    )}
-                  </div>
+                    );
+                  })}
+                </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {selectedArticle.mitreTechniques.map((tech) => (
-                      <div
-                        key={tech.id}
-                        className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-2 hover:border-purple-500/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-cyan-300 text-xs">{tech.id}</span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800">
-                            {tech.tactic}
+                {/* Dossier Body Content */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-200 text-xs">
+                  {/* TAB 1: OVERVIEW */}
+                  {activeDossierTab === 'overview' && (
+                    <div className="space-y-6">
+                      {/* Summary Box */}
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
+                        <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400">
+                          Executive Intelligence Briefing
+                        </h4>
+                        <p className="text-xs leading-relaxed text-slate-200 font-sans">{selectedArticle.summary}</p>
+                      </div>
+
+                      {/* Attributes Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {selectedArticle.origin && (
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <div className="text-[10px] font-mono uppercase text-slate-500">Origin / Attribution</div>
+                            <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
+                              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>{selectedArticle.origin}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedArticle.motivation && (
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <div className="text-[10px] font-mono uppercase text-slate-500">Primary Motivation</div>
+                            <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
+                              <Crosshair className="w-3.5 h-3.5 text-rose-400" />
+                              <span>{selectedArticle.motivation}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                          <div className="text-[10px] font-mono uppercase text-slate-500">Intelligence Source / Lab</div>
+                          <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{selectedArticle.author}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Target Sectors */}
+                      {selectedArticle.targetSectors.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-400">
+                            Targeted Industry Sectors
+                          </h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {selectedArticle.targetSectors.map((sector) => (
+                              <span
+                                key={sector}
+                                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-950 text-slate-300 border border-slate-800 flex items-center gap-1.5"
+                              >
+                                <Building className="w-3 h-3 text-cyan-400" />
+                                {sector}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* References */}
+                      {selectedArticle.references.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-slate-800">
+                          <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-400">
+                            Source Authorities &amp; Advisory Citations
+                          </h4>
+                          <ul className="space-y-1.5 font-mono text-[11px]">
+                            {selectedArticle.references.map((ref, idx) => (
+                              <li key={idx} className="flex items-center gap-2 text-slate-300">
+                                <ChevronRight className="w-3 h-3 text-cyan-400 shrink-0" />
+                                <span className="font-semibold text-white">{ref.title}</span>
+                                <span className="text-slate-500">({ref.source})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 2: TECHNICAL DETAILS */}
+                  {activeDossierTab === 'technical' && (
+                    <div className="space-y-4">
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                        <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400 mb-3">
+                          Adversary Tradecraft &amp; Technical Capabilities
+                        </h4>
+                        <div className="space-y-3 font-sans leading-relaxed text-slate-200">
+                          {selectedArticle.technicalDetails.map((item, idx) => (
+                            <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-slate-900/60 border border-slate-800/80">
+                              <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60 flex items-center justify-center font-mono text-[11px] font-bold shrink-0">
+                                {idx + 1}
+                              </span>
+                              <p className="text-xs text-slate-300 mt-0.5">{item}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Kill Chain Stage */}
+                      {selectedArticle.killChainStage && (
+                        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <div>
+                            <div className="text-[10px] font-mono uppercase text-slate-500">Lockheed Martin Cyber Kill Chain Stage</div>
+                            <div className="text-xs font-bold text-white mt-0.5">{selectedArticle.killChainStage}</div>
+                          </div>
+                          <span className="px-2 py-1 rounded text-xs font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                            ACTIVE STAGE
                           </span>
                         </div>
-                        <div className="text-xs font-bold text-white">{tech.name}</div>
-                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
-                          <span>Enterprise ATT&amp;CK</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 3: MITRE ATT&CK */}
+                  {activeDossierTab === 'mitre' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-purple-400">
+                          Mapped MITRE ATT&amp;CK Techniques
+                        </h4>
+                        {onNavigateTab && (
                           <button
                             onClick={() => {
-                              copyToClipboard(tech.id, `tech-${tech.id}`, 'Technique ID');
+                              if (onNavigateToHunting) {
+                                onNavigateToHunting(selectedArticle.mitreTechniques[0]?.id || 'T1003');
+                              }
+                              onNavigateTab('threat-hunting-sandbox');
                             }}
-                            className="text-cyan-400 hover:underline flex items-center gap-1"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30"
                           >
-                            <Copy className="w-3 h-3" />
-                            <span>Copy ID</span>
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span>Hunt in Sigma Sandbox</span>
                           </button>
-                        </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {/* TAB 4: IOCS & OBSERVABLES */}
-              {activeDossierTab === 'iocs' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400">
-                      Dossier Observable Indicators ({selectedArticle.iocs.length})
-                    </h4>
-                    <button
-                      onClick={() => {
-                        const values = selectedArticle.iocs.map((i) => i.value).join('\n');
-                        copyToClipboard(values, 'all-article-iocs', 'All Indicators');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Copy All IOCs</span>
-                    </button>
-                  </div>
-
-                  {selectedArticle.iocs.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500 bg-slate-950 rounded-xl border border-slate-800">
-                      No atomic IOCs cataloged for this conceptual dossier.
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {selectedArticle.iocs.map((ioc, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-900 text-cyan-400 border border-slate-800">
-                                {ioc.type}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {selectedArticle.mitreTechniques.map((tech) => (
+                          <div
+                            key={tech.id}
+                            className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-2 hover:border-purple-500/50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono font-bold text-cyan-300 text-xs">{tech.id}</span>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800">
+                                {tech.tactic}
                               </span>
-                              <span className="text-xs font-bold text-white select-all">{ioc.value}</span>
                             </div>
-                            <div className="text-[11px] text-slate-400 font-sans">{ioc.description}</div>
-                          </div>
-
-                          <div className="flex items-center gap-2 self-end sm:self-auto font-sans">
-                            <button
-                              onClick={() => copyToClipboard(ioc.value, `dossier-ioc-${idx}`, 'IOC')}
-                              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1"
-                            >
-                              {copiedKey === `dossier-ioc-${idx}` ? (
-                                <Check className="w-3 h-3 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                              <span>Copy</span>
-                            </button>
-
-                            {onNavigateTab && (
+                            <div className="text-xs font-bold text-white">{tech.name}</div>
+                            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                              <span>Enterprise ATT&amp;CK</span>
                               <button
                                 onClick={() => {
-                                  if (onNavigateToSIEM) {
-                                    onNavigateToSIEM(`index=* "${ioc.value}"`);
-                                  }
-                                  onNavigateTab('siem-console');
+                                  copyToClipboard(tech.id, `tech-${tech.id}`, 'Technique ID');
                                 }}
-                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20"
+                                className="text-cyan-400 hover:underline flex items-center gap-1"
                               >
-                                Search SIEM
+                                <Copy className="w-3 h-3" />
+                                <span>Copy ID</span>
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* TAB 5: DETECTION ENGINEERING */}
-              {activeDossierTab === 'detection' && (
-                <div className="space-y-6">
-                  {/* Splunk SPL Block */}
-                  {selectedArticle.detectionQueries.spl && (
-                    <div className="space-y-2">
+                  {/* TAB 4: IOCS & OBSERVABLES */}
+                  {activeDossierTab === 'iocs' && (
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                          <h4 className="text-xs font-bold font-mono uppercase text-white">Splunk SPL Detection Query</h4>
+                        <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-cyan-400">
+                          Dossier Observable Indicators ({selectedArticle.iocs.length})
+                        </h4>
+                        <button
+                          onClick={() => {
+                            const values = selectedArticle.iocs.map((i) => i.value).join('\n');
+                            copyToClipboard(values, 'all-article-iocs', 'All Indicators');
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Copy All IOCs</span>
+                        </button>
+                      </div>
+
+                      {selectedArticle.iocs.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500 bg-slate-950 rounded-xl border border-slate-800">
+                          No atomic IOCs cataloged for this conceptual dossier.
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() =>
-                              copyToClipboard(selectedArticle.detectionQueries.spl!, 'spl-query', 'Splunk SPL')
-                            }
-                            className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
-                          >
-                            <Copy className="w-3 h-3" />
-                            <span>Copy SPL</span>
-                          </button>
-                          {onNavigateTab && (
-                            <button
-                              onClick={() => {
-                                if (onNavigateToSIEM) {
-                                  onNavigateToSIEM(selectedArticle.detectionQueries.spl!);
-                                }
-                                onNavigateTab('siem-console');
-                              }}
-                              className="px-3 py-1 text-xs font-semibold rounded-lg bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-mono shadow-sm flex items-center gap-1"
+                      ) : (
+                        <div className="space-y-2.5">
+                          {selectedArticle.iocs.map((ioc, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
                             >
-                              <Terminal className="w-3.5 h-3.5" />
-                              <span>Execute in SIEM</span>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-900 text-cyan-400 border border-slate-800">
+                                    {ioc.type}
+                                  </span>
+                                  <span className="text-xs font-bold text-white select-all">{ioc.value}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 font-sans">{ioc.description}</div>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-end sm:self-auto font-sans">
+                                <button
+                                  onClick={() => copyToClipboard(ioc.value, `dossier-ioc-${idx}`, 'IOC')}
+                                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1"
+                                >
+                                  {copiedKey === `dossier-ioc-${idx}` ? (
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                  <span>Copy</span>
+                                </button>
+
+                                {onNavigateTab && (
+                                  <button
+                                    onClick={() => {
+                                      if (onNavigateToSIEM) {
+                                        onNavigateToSIEM(`index=* "${ioc.value}"`);
+                                      }
+                                      onNavigateTab('siem-console');
+                                    }}
+                                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20"
+                                  >
+                                    Search SIEM
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 5: DETECTION ENGINEERING */}
+                  {activeDossierTab === 'detection' && (
+                    <div className="space-y-6">
+                      {/* Splunk SPL Block */}
+                      {selectedArticle.detectionQueries.spl && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                              <h4 className="text-xs font-bold font-mono uppercase text-white">Splunk SPL Detection Query</h4>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() =>
+                                  copyToClipboard(selectedArticle.detectionQueries.spl!, 'spl-query', 'Splunk SPL')
+                                }
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>Copy SPL</span>
+                              </button>
+                              {onNavigateTab && (
+                                <button
+                                  onClick={() => {
+                                    if (onNavigateToSIEM) {
+                                      onNavigateToSIEM(selectedArticle.detectionQueries.spl!);
+                                    }
+                                    onNavigateTab('siem-console');
+                                  }}
+                                  className="px-3 py-1 text-xs font-semibold rounded-lg bg-cyan-500 text-slate-950 hover:bg-cyan-400 font-mono shadow-sm flex items-center gap-1"
+                                >
+                                  <Terminal className="w-3.5 h-3.5" />
+                                  <span>Execute in SIEM</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-200 overflow-x-auto selection:bg-cyan-500/30">
+                            {selectedArticle.detectionQueries.spl}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Sigma Rule Block */}
+                      {selectedArticle.detectionQueries.sigma && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+                              <h4 className="text-xs font-bold font-mono uppercase text-white">Sigma Generic Detection Rule</h4>
+                            </div>
+                            <button
+                              onClick={() =>
+                                copyToClipboard(selectedArticle.detectionQueries.sigma!, 'sigma-query', 'Sigma YAML')
+                              }
+                              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Sigma</span>
                             </button>
-                          )}
+                          </div>
+                          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-purple-200 overflow-x-auto selection:bg-purple-500/30 whitespace-pre-wrap">
+                            {selectedArticle.detectionQueries.sigma}
+                          </pre>
                         </div>
-                      </div>
-                      <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-200 overflow-x-auto selection:bg-cyan-500/30">
-                        {selectedArticle.detectionQueries.spl}
-                      </pre>
+                      )}
+
+                      {/* Microsoft KQL Block */}
+                      {selectedArticle.detectionQueries.kql && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                              <h4 className="text-xs font-bold font-mono uppercase text-white">Microsoft Sentinel KQL</h4>
+                            </div>
+                            <button
+                              onClick={() =>
+                                copyToClipboard(selectedArticle.detectionQueries.kql!, 'kql-query', 'Sentinel KQL')
+                              }
+                              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>Copy KQL</span>
+                            </button>
+                          </div>
+                          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-blue-200 overflow-x-auto selection:bg-blue-500/30">
+                            {selectedArticle.detectionQueries.kql}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* YARA Signature Block */}
+                      {selectedArticle.detectionQueries.yara && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                              <h4 className="text-xs font-bold font-mono uppercase text-white">YARA Pattern Matching Rule</h4>
+                            </div>
+                            <button
+                              onClick={() =>
+                                copyToClipboard(selectedArticle.detectionQueries.yara!, 'yara-query', 'YARA Rule')
+                              }
+                              className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>Copy YARA</span>
+                            </button>
+                          </div>
+                          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-200 overflow-x-auto selection:bg-emerald-500/30 whitespace-pre-wrap">
+                            {selectedArticle.detectionQueries.yara}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Sigma Rule Block */}
-                  {selectedArticle.detectionQueries.sigma && (
-                    <div className="space-y-2">
+                  {/* TAB 6: MITIGATION & DEFENSES CHECKLIST */}
+                  {activeDossierTab === 'mitigation' && (
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
-                          <h4 className="text-xs font-bold font-mono uppercase text-white">Sigma Generic Detection Rule</h4>
+                        <div>
+                          <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-emerald-400">
+                            Recommended SOC Defensive Controls &amp; Mitigations
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Interactive verification checklist for SOC hardening and posture remediation.
+                          </p>
                         </div>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(selectedArticle.detectionQueries.sigma!, 'sigma-query', 'Sigma YAML')
-                          }
-                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>Copy Sigma</span>
-                        </button>
                       </div>
-                      <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-purple-200 overflow-x-auto selection:bg-purple-500/30 whitespace-pre-wrap">
-                        {selectedArticle.detectionQueries.sigma}
-                      </pre>
-                    </div>
-                  )}
 
-                  {/* Microsoft KQL Block */}
-                  {selectedArticle.detectionQueries.kql && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                          <h4 className="text-xs font-bold font-mono uppercase text-white">Microsoft Sentinel KQL</h4>
-                        </div>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(selectedArticle.detectionQueries.kql!, 'kql-query', 'Sentinel KQL')
-                          }
-                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>Copy KQL</span>
-                        </button>
+                      <div className="space-y-2.5">
+                        {selectedArticle.mitigations.map((mit, idx) => {
+                          const key = `${selectedArticle.id}-mit-${idx}`;
+                          const isChecked = !!verifiedMitigations[key];
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() =>
+                                setVerifiedMitigations((prev) => ({
+                                  ...prev,
+                                  [key]: !prev[key]
+                                }))
+                              }
+                              className={`p-3.5 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                                isChecked
+                                  ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100'
+                                  : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                              }`}
+                            >
+                              <div
+                                className={`w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-colors ${
+                                  isChecked
+                                    ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                                    : 'border-slate-600 bg-slate-900'
+                                }`}
+                              >
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <div className="flex-1 text-xs leading-relaxed">
+                                <span className={isChecked ? 'line-through text-slate-400' : ''}>{mit}</span>
+                              </div>
+                              <span
+                                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+                                  isChecked
+                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                    : 'bg-slate-900 text-slate-500 border border-slate-800'
+                                }`}
+                              >
+                                {isChecked ? 'VERIFIED' : 'PENDING'}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-blue-200 overflow-x-auto selection:bg-blue-500/30">
-                        {selectedArticle.detectionQueries.kql}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* YARA Signature Block */}
-                  {selectedArticle.detectionQueries.yara && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                          <h4 className="text-xs font-bold font-mono uppercase text-white">YARA Pattern Matching Rule</h4>
-                        </div>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(selectedArticle.detectionQueries.yara!, 'yara-query', 'YARA Rule')
-                          }
-                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 font-mono"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>Copy YARA</span>
-                        </button>
-                      </div>
-                      <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-200 overflow-x-auto selection:bg-emerald-500/30 whitespace-pre-wrap">
-                        {selectedArticle.detectionQueries.yara}
-                      </pre>
                     </div>
                   )}
                 </div>
-              )}
-
-              {/* TAB 6: MITIGATION & DEFENSES CHECKLIST */}
-              {activeDossierTab === 'mitigation' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-emerald-400">
-                        Recommended SOC Defensive Controls &amp; Mitigations
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Interactive verification checklist for SOC hardening and posture remediation.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {selectedArticle.mitigations.map((mit, idx) => {
-                      const key = `${selectedArticle.id}-mit-${idx}`;
-                      const isChecked = !!verifiedMitigations[key];
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() =>
-                            setVerifiedMitigations((prev) => ({
-                              ...prev,
-                              [key]: !prev[key]
-                            }))
-                          }
-                          className={`p-3.5 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
-                            isChecked
-                              ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100'
-                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                          }`}
-                        >
-                          <div
-                            className={`w-4 h-4 rounded mt-0.5 flex items-center justify-center border transition-colors ${
-                              isChecked
-                                ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                                : 'border-slate-600 bg-slate-900'
-                            }`}
-                          >
-                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                          </div>
-                          <div className="flex-1 text-xs leading-relaxed">
-                            <span className={isChecked ? 'line-through text-slate-400' : ''}>{mit}</span>
-                          </div>
-                          <span
-                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                              isChecked
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                : 'bg-slate-900 text-slate-500 border border-slate-800'
-                            }`}
-                          >
-                            {isChecked ? 'VERIFIED' : 'PENDING'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+              </>
+            )}
 
             {/* Dossier Footer */}
             <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-3">

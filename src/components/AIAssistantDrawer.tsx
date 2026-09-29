@@ -8,6 +8,8 @@ interface AIAssistantDrawerProps {
   onRunSPLInConsole?: (spl: string) => void;
 }
 
+import { fetchHistoricalActors, fetchHistoricalCampaigns, fetchHistoricalVulnerabilities } from '../lib/firebase';
+
 export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   isOpen,
   onClose,
@@ -17,20 +19,20 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     {
       id: 'm1',
       sender: 'assistant',
-      modelUsed: 'gemini-3.8-flash',
+      modelUsed: 'gemini-2.0-flash',
       text: `Hello Analyst! I am **Tejax Cyber AI Assistant**, your dedicated CTI Analyst, Threat Hunter, and Splunk SIEM Detection Engineer.\n\nHow can I assist your SOC operations today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestedActions: [
         'Optimize my SPL query for 10M log events',
-        'Convert Sigma rule into Splunk SPL & KQL',
-        'Formulate APT28 Threat Hunting Hypothesis',
-        'Generate Incident Remediation SLA Strategy'
+        'Compare APT28 evolution vs Lazarus Group',
+        'Identify patterns in historical campaigns',
+        'Analyze long-term exploit trends'
       ]
     }
   ]);
 
   const [input, setInput] = useState<string>('');
-  const [selectedModel, setSelectedModel] = useState<'gemini-3.8-flash' | 'gemini-3.1-pro-preview'>('gemini-3.8-flash');
+  const [selectedModel, setSelectedModel] = useState<'gemini-2.0-flash' | 'gemini-2.0-pro-exp-02-05'>('gemini-2.0-flash');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedCodeIdx, setCopiedCodeIdx] = useState<number | null>(null);
 
@@ -39,6 +41,29 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || input;
     if (!text.trim() || isLoading) return;
+
+    let historicalContext = '';
+    const textLower = text.toLowerCase();
+    
+    // Check if query is about history/evolution
+    if (textLower.includes('history') || textLower.includes('evolution') || textLower.includes('past') || textLower.includes('campaign') || textLower.includes('pattern') || textLower.includes('trend')) {
+      try {
+        const [actors, campaigns, vulns] = await Promise.all([
+          fetchHistoricalActors(),
+          fetchHistoricalCampaigns(),
+          fetchHistoricalVulnerabilities()
+        ]);
+        
+        historicalContext = `
+        HISTORICAL INTELLIGENCE CONTEXT:
+        - ACTORS: ${JSON.stringify(actors.map(a => ({ name: a.name, evolution: a.evolutionSummary })))}
+        - PAST CAMPAIGNS: ${JSON.stringify(campaigns.map(c => ({ title: c.title, outcome: c.outcome, ttps: c.ttpsUsed })))}
+        - VULN HISTORY: ${JSON.stringify(vulns.map(v => ({ cve: v.cveId, exploitEvolution: v.exploitEvolution })))}
+        `;
+      } catch (e) {
+        console.error("Failed to fetch historical context for AI", e);
+      }
+    }
 
     const userMsg: AIChatMessage = {
       id: `msg-${Date.now()}`,
@@ -58,7 +83,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newHistory,
-          model: selectedModel
+          model: selectedModel,
+          historicalContext // Send historical data if relevant
         })
       });
 

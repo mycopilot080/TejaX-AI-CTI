@@ -590,16 +590,16 @@ export const ThreatReports: React.FC<ThreatReportsProps> = () => {
 
   // Subscribe to Firebase Firestore threat_reports collection
   useEffect(() => {
-    const unsubscribe = subscribeThreatReports((firestoreReports) => {
+    const unsubscribe = subscribeThreatReports((firestoreReports: ThreatReportData[]) => {
       if (firestoreReports && firestoreReports.length > 0) {
         setReports(firestoreReports);
         setSelectedReport((current) => {
-          const match = firestoreReports.find((r) => r.id === current?.id);
+          const match = firestoreReports.find((r: ThreatReportData) => r.id === current?.id);
           return match || firestoreReports[0];
         });
       } else {
         // Seed initial reports to Firestore
-        INITIAL_THREAT_REPORTS.forEach((rep) => saveThreatReportToFirestore(rep));
+        INITIAL_THREAT_REPORTS.forEach((rep: ThreatReportData) => saveThreatReportToFirestore(rep));
       }
     });
 
