@@ -420,7 +420,7 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginScreen onLogin={(email) => { setIsAuthenticated(true); setCurrentUserEmail(email); }} />;
+    return <LoginScreen />;
   }
 
   return (
