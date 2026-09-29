@@ -116,24 +116,81 @@
         "userId": { "type": "string" }
       },
       "required": ["cveId", "userId"]
+    },
+    "Asset": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "criticality": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "owner": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "email": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "IncidentTicket": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "severity": { "type": "string" },
+        "status": { "type": "string" },
+        "assignedAnalyst": { "type": "string" },
+        "affectedHost": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "title", "userId"]
+    },
+    "DetectionRule": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "severity": { "type": "string" },
+        "technique": { "type": "string" },
+        "queries": { "type": "object" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
     }
   },
   "firestore": {
     "/threat_wiki/{articleId}": {
-      "schema": "ThreatWikiArticle",
-      "description": "Collection of intelligence dossiers for the Threat Wiki."
+      "schema": "ThreatWikiArticle"
     },
     "/historical_actors/{actorId}": {
-      "schema": "HistoricalActor",
-      "description": "Archive of threat actor evolution."
+      "schema": "HistoricalActor"
     },
     "/historical_campaigns/{campaignId}": {
-      "schema": "HistoricalCampaign",
-      "description": "Archive of past threat campaigns."
+      "schema": "HistoricalCampaign"
     },
     "/historical_vulnerabilities/{cveId}": {
-      "schema": "HistoricalVulnerability",
-      "description": "Historical exploit and patch data for CVEs."
+      "schema": "HistoricalVulnerability"
+    },
+    "/assets/{assetId}": {
+      "schema": "Asset"
+    },
+    "/contacts/{contactId}": {
+      "schema": "Contact"
+    },
+    "/incident_tickets/{ticketId}": {
+      "schema": "IncidentTicket"
+    },
+    "/detection_rules/{ruleId}": {
+      "schema": "DetectionRule"
     }
   }
 }

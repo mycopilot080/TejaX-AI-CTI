@@ -89,12 +89,40 @@ service cloud.firestore {
     }
 
     // Support for other application entities (seeding and sync)
-    match /threat_feeds/{id} { allow read, write: if isSignedIn(); }
-    match /assets/{id} { allow read, write: if isSignedIn(); }
-    match /contacts/{id} { allow read, write: if isSignedIn(); }
-    match /incident_tickets/{id} { allow read, write: if isSignedIn(); }
-    match /detection_rules/{id} { allow read, write: if isSignedIn(); }
-    match /threat_hunts/{id} { allow read, write: if isSignedIn(); }
-    match /threat_reports/{id} { allow read, write: if isSignedIn(); }
+    match /threat_feeds/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /assets/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /contacts/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /incident_tickets/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /detection_rules/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /threat_hunts/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+    match /threat_reports/{id} { 
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
   }
 }
